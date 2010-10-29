@@ -1,0 +1,12 @@
+Name:            pandoc-lit
+Version:         0.1
+Cabal-Version:   >= 1.6
+Build-Type:      Simple
+Copyright:       (c) 2010 Tillmann Rendel
+Author:          Tillmann Rendel <rendel@informatik.uni-marburg.de>
+Synopsis:        A literate programming system based on pandoc.
+
+Executable pandoc-lit
+  Hs-Source-Dirs:     src
+  Main-Is:            pandoc-lit.hs
+  Build-Depends:      utf8-string, base == 4.*, pandoc == 1.5.*, regexpr, directory, filepath, process
