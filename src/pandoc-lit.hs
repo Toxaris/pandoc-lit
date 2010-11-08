@@ -1,3 +1,7 @@
+-- Copyright (c) 2010 Tillmann Rendel <rendel@informatik.uni-marburg.de>
+-- This code can be used under the terms of a 3-clause BSD license.
+-- See LICENSE for details.
+
 {-# LANGUAGE PatternGuards, DeriveDataTypeable #-}
 module Main where
 
