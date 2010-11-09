@@ -10,6 +10,7 @@ Category:        Development
 Build-Type:      Simple
 Cabal-Version:   >= 1.6
 Copyright:       (c) 2010 Tillmann Rendel
+Extra-Source-Files: README
 
 Executable pandoc-lit
   Hs-Source-Dirs:     src

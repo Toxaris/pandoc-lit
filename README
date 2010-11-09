@@ -27,7 +27,7 @@ Download the [source distribution].
     cd pandoc-lit-0.1
     cabal install
     
-[source distribution]: http://www.informatik.uni-marburg.de/~rendel/pandoc-lit-tar.gz
+[source distribution]: http://www.informatik.uni-marburg.de/~rendel/pandoc-lit/pandoc-lit-0.1.tar.gz
 
 Documentation
 =============
@@ -51,17 +51,17 @@ First, install pandoc-lit:
 
     wget http://www.informatik.uni-marburg.de/~rendel/pandoc-lit/pandoc-lit-0.1.tar.gz
     tar -xzf pandoc-lit-0.1.tar.gz
-    cd pandoc-lit
+    cd pandoc-lit-0.1
     cabal install
     cd ..
-    rm -r pandoc-lit
+    rm -r pandoc-lit-0.1
 
 The following commands should download the files necessary to 
 compile the paper and the presentation slides:
 
     md pandoc-lit-test
     cd pandoc-lit-test
-    wget pandoc-lit-test http://www.informatik.uni-marburg.de/~rendel/unparse/sources.zip
+    wget http://www.informatik.uni-marburg.de/~rendel/unparse/sources.zip
     unzip sources.zip
     wget http://www.informatik.uni-marburg.de/~rendel/unparse/scrartcl.template
     wget http://www.sigplan.org/sigplanconf.cls
@@ -92,20 +92,20 @@ For the primary file, we need to add a couple of options. We use
 `--template` to select `scrartcl.template` which contains the
 document preamble. The `--abstract` flag converts a section with
 header `"Abstract"` into an `abstract` environment. And finally
-`--variable:sigplanconf=1` sets a variable for pandoc's template
+`--variable=sigplanconf:1` sets a variable for pandoc's template
 engine. This variable is tested in `scrartcl.template`.
 
-    pandoc-lit --template scrartcl.template --abstract --variable:sigplanconf=1 --comments Unparse.lhs > build/Unparse.lhs
+    pandoc-lit --template scrartcl.template --abstract --variable=sigplanconf:1 --comments Unparse.lhs > build/Unparse.lhs
 
 Now, the four `*.lhs2tex` files in `build` are ready to be
 processed by lhs2tex. A single call will suffice, since lhs2tex
 will process the `%include` directives.
 
     cd build
-    lhs2tex Unparse.lhs > Unparse.tex
+    lhs2tex Unparse.lhs > ../paper.tex
     cd ..
 
-Lhs2tex should have produced a single file `Unparse.tex` which
+Lhs2tex should have produced a single file `paper.tex` which
 contains the full paper. We can `latex` or `pdflatex` this file
 as usual.
 
@@ -123,7 +123,7 @@ will process the `%include` directives, producing a single input
 file for `lhs2tex`.
 
     cd Talk
-    pandoc-lit --title-page --template beamer.template --eval .. --comments --beamer --process-includes Main.lhs > slides.lhs2tex
+    pandoc-lit --title-page --template beamer.template --eval .. --comments --beamer --process-includes Main.lhs > slides.lhs
 
 The `--title-page` option replaces the first section called
 `Title Page` by a title frame (using `\maketitle`). The
@@ -150,7 +150,7 @@ need to further process `slides.tex` by `xelatex`.
 Feedback
 ========
 
-Feedback, patches, rants, questions and insights are welcome.
+Feedback, patches, rants, questions, insights etc. are welcome.
 Send to [Tillmann Rendel].
 
 [Tillmann Rendel]: mailto:rendel@informatik.uni-marburg.de
