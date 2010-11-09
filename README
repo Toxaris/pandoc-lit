@@ -1,0 +1,156 @@
+% Literate Programming with pandoc and lhs2tex
+% Tillmann Rendel
+% November 2010
+
+pandoc-lit supports literate programming by combining two
+excellent tools: [pandoc] for text processing, and [lhs2tex]
+for source code formatting. pandoc-lit's input files are written
+in markdown+lhs, and its output is LaTeX code ready to be 
+processed by lhs2tex.
+
+[pandoc]: http://johnmacfarlane.net/pandoc/
+[lhs2tex]: http://people.cs.uu.nl/andres/lhs2tex/
+
+I use pandoc-lit to write research papers and prepare
+presentation slides, and I plan to use it for my Ph.D. thesis. It
+has been used by a colleague to prepare a presentation, so it
+runs one computers other than mine, too. So while I think it is
+quite usable already, it is by no means stable, and currently,
+using it essentially requires some amount of hacking on it.
+
+Installation
+============
+
+Download the [source distribution].
+
+    tar -xzf pandoc-lit-0.1.tar.gz
+    cd pandoc-lit-0.1
+    cabal install
+    
+[source distribution]: http://www.informatik.uni-marburg.de/~rendel/pandoc-lit-tar.gz
+
+Documentation
+=============
+
+None available, but try `pandoc-lit --help` for an overview of
+command-line options, or watch this [lightning talk at the
+Haskell Implementors Workshop].
+
+[lightning talk at the Haskell Implementors Workshop]: http://www.vimeo.com/15481736
+
+Example
+=======
+
+The paper and presentation slides about [invertible syntax
+descriptions] were produced with pandoc-lit. This short guide
+explains how to recompile the pdfs from sources.
+
+[invertible syntax descriptions]: http://www.informatik.uni-marburg.de/~rendel/unparse/
+
+First, install pandoc-lit:
+
+    wget http://www.informatik.uni-marburg.de/~rendel/pandoc-lit/pandoc-lit-0.1.tar.gz
+    tar -xzf pandoc-lit-0.1.tar.gz
+    cd pandoc-lit
+    cabal install
+    cd ..
+    rm -r pandoc-lit
+
+The following commands should download the files necessary to 
+compile the paper and the presentation slides:
+
+    md pandoc-lit-test
+    cd pandoc-lit-test
+    wget pandoc-lit-test http://www.informatik.uni-marburg.de/~rendel/unparse/sources.zip
+    unzip sources.zip
+    wget http://www.informatik.uni-marburg.de/~rendel/unparse/scrartcl.template
+    wget http://www.sigplan.org/sigplanconf.cls
+    wget -P Talk http://www.informatik.uni-marburg.de/~rendel/unparse/beamer.template
+
+The paper
+---------
+    
+The paper consists of the primary file `Unparse.lhs` which uses
+lhs2tex `%include` directives to include a bunch of secondary
+files (`Iso.lhs`, `TH.lhs` and `Evaluation.lhs`). All of these
+files use pandoc `markdown+lhs` mixed with lhs2tex directives. We
+need to run pandoc-lit on each of the files to convert the
+pandoc `markdown+lhs` into `latex+lhs`, but leaving the lhs2tex
+directives in place, and encoding everything according to
+lhs2tex's input format (e.g., escaping `|` into `||`). The transformed
+files will be written into a separate `build` directory.
+
+We start with the secondary files. We use the `--comments` flag to
+preserve TeX-style `%...` comments, including lhs2tex directives.
+
+    md build
+    pandoc-lit --comments Iso.lhs > build/Iso.lhs
+    pandoc-lit --comments TH.lhs > build/TH.lhs
+    pandoc-lit --comments Evaluation.lhs > build/Evaluation.lhs
+    
+For the primary file, we need to add a couple of options. We use
+`--template` to select `scrartcl.template` which contains the
+document preamble. The `--abstract` flag converts a section with
+header `"Abstract"` into an `abstract` environment. And finally
+`--variable:sigplanconf=1` sets a variable for pandoc's template
+engine. This variable is tested in `scrartcl.template`.
+
+    pandoc-lit --template scrartcl.template --abstract --variable:sigplanconf=1 --comments Unparse.lhs > build/Unparse.lhs
+
+Now, the four `*.lhs2tex` files in `build` are ready to be
+processed by lhs2tex. A single call will suffice, since lhs2tex
+will process the `%include` directives.
+
+    cd build
+    lhs2tex Unparse.lhs > Unparse.tex
+    cd ..
+
+Lhs2tex should have produced a single file `Unparse.tex` which
+contains the full paper. We can `latex` or `pdflatex` this file
+as usual.
+
+The presentation slides
+-----------------------
+
+The presentation slides use the LaTeX-package `beamer`. Like the
+paper, the presentation slides consist of a primary file
+(`Talk/Main.lhs`) which uses lhs2tex `%include` directives to
+include some secondary files (`Talk/AST.lhs`,
+`Talk/OnlyParsing.lhs`, `Talk/OnlyPrinting.lhs` and
+`Talk/Syntax.lhs`). But for the paper, instead of processing the
+secondary files separately to be included by lhs2tex, pandoc-lit
+will process the `%include` directives, producing a single input
+file for `lhs2tex`.
+
+    cd Talk
+    pandoc-lit --title-page --template beamer.template --eval .. --comments --beamer --process-includes Main.lhs > slides.lhs2tex
+
+The `--title-page` option replaces the first section called
+`Title Page` by a title frame (using `\maketitle`). The
+`--template` option selects `beamer.template` for the preamble.
+The `--eval ..` option activates processing of `\eval{...}`
+directives with source directory `..`. Using `..` as source
+directory is necessary to process module names such as `Iso` or
+`Talk.Syntax` correctly. The `--comments` option preserves
+TeX-style `%...` comments. The `--beamer` option activates
+beamer-specific processing. For instance, subsections in the
+input are replaced by `frame` environments in the output.
+Finally, `--process-includes` activates the processing of
+`%include` directives.
+
+Pandoc-lit should have produced a single file `slides.lhs` which
+contains all of the presentation slides. This file can be
+processed by lhs2tex.
+
+    lhs2tex slides.lhs > slides.tex
+
+The preamble in `beamer.template` is targeted at XeTeX, so we
+need to further process `slides.tex` by `xelatex`.
+
+Feedback
+========
+
+Feedback, patches, rants, questions and insights are welcome.
+Send to [Tillmann Rendel].
+
+[Tillmann Rendel]: mailto:rendel@informatik.uni-marburg.de
