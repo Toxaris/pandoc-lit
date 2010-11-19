@@ -1,15 +1,42 @@
 Name:            pandoc-lit
 Version:         0.1
 Synopsis:        Literate programming with pandoc and lhs2tex
-Description:     Literate programming with pandoc and lhs2tex
+Description:     pandoc-lit supports literate programming by
+                 combining two excellent tools: pandoc for text
+                 processing, and lhs2tex for source code
+                 formatting. pandoc-lit's input files are written
+                 in markdown+lhs, and its output is LaTeX code
+                 ready to be processed by lhs2tex.
+                 .
+                 I use pandoc-lit to write research papers and
+                 prepare presentation slides, and I plan to use
+                 it for my Ph.D. thesis. It has been used by a
+                 colleague to prepare a presentation, so it runs
+                 one computers other than mine, too. So while I
+                 think it is quite usable already, it is by no
+                 means stable, and currently, using it
+                 essentially requires some amount of hacking on
+                 it.
+                 .
+                 At the Haskell Implementor's Workshop 2010, I 
+                 gave a lightning talk about pandoc-lit, which
+                 has been videotaped and is available on the web.
+                 .
+                 .
+                   * pandoc: <http://johnmacfarlane.net/pandoc/>
+                 .
+                   * lhs2tex: <http://people.cs.uu.nl/andres/lhs2tex/>
+                 .
+                   * lightning talk: <http://www.vimeo.com/15481736>
+
+Homepage:        http://www.informatik.uni-marburg.de/~rendel/pandoc-lit
 License:         BSD3
 License-file:    LICENSE
-Author:          Tillmann Rendel <rendel@informatik.uni-marburg.de>
+Author:          Tillmann Rendel
 Maintainer:      Tillmann Rendel <rendel@informatik.uni-marburg.de>
 Category:        Development
 Build-Type:      Simple
 Cabal-Version:   >= 1.6
-Copyright:       (c) 2010 Tillmann Rendel
 Extra-Source-Files: README
 
 Executable pandoc-lit
