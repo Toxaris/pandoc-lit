@@ -17,7 +17,7 @@ import System.Directory (doesFileExist, getAppUserDataDirectory)
 import System.FilePath (pathSeparator, (</>), (<.>))
 import System.Process (readProcess)
 
-import qualified System.IO.UTF8 as UTF8 
+import qualified System.IO.UTF8 as UTF8
 
 import Data.List (intersperse, stripPrefix)
 import Data.Data (Data, Typeable)
@@ -38,41 +38,41 @@ data Content
   = Block Block
   | Section Int [Inline] [Content]
   deriving (Eq, Show, Typeable, Data)
- 
+
 toContent :: [Block] -> [Content]
-toContent = fst . go 0 
+toContent = fst . go 0
   where
   go outer [] = ([], [])
-  
-  go outer rest@(Header inner _ : _) | inner <= outer  
+
+  go outer rest@(Header inner _ : _) | inner <= outer
     =  ([], rest)
-  
-  go outer (Header inner text : rest)                  
-    =  (section : content'', rest'') 
+
+  go outer (Header inner text : rest)
+    =  (section : content'', rest'')
     where (content', rest') = go inner rest
           (content'',  rest'') = go outer rest'
           section = Section inner text content'
-        
-  go outer (first : rest)                              
+
+  go outer (first : rest)
     =  (block : content', rest')
     where (content', rest') = go outer rest
           block = Block first
-  
+
 fromContent :: Content -> [Block]
-fromContent (Block block) 
+fromContent (Block block)
   = [block]
-fromContent (Section level header content) 
-  = Header level header : concatMap fromContent content 
+fromContent (Section level header content)
+  = Header level header : concatMap fromContent content
 
 -- transformation
 
 transformAbstract :: String -> Content -> [Content]
-transformAbstract abstract (Section _ header contents) 
+transformAbstract abstract (Section _ header contents)
   |   isText abstract header
-  =   Block (Plain [TeX "\\begin{abstract}"]) 
-  :   contents 
+  =   Block (Plain [TeX "\\begin{abstract}"])
+  :   contents
   ++  [Block (Plain [TeX "\\end{abstract}"])]
-transformAbstract abstract content 
+transformAbstract abstract content
   = [content]
 
 transformToc :: String -> Content -> Content
@@ -89,7 +89,7 @@ transformBeamer config (Section _ header contents)
   =   Block (Plain [TeX "\\begin{frame}\n\\titlepage"])
   :   transformFrameBlocks config 1 contents
   ++  [Block (Plain [TeX "\\end{frame}"])]
-  
+
 transformBeamer config (Section 2 header contents)
   |   Block HorizontalRule `elem` contents
   =   [Block (Plain (TeX "\\begin{frame}{" : header ++ [TeX "}"]))]
@@ -104,7 +104,7 @@ transformBeamer config (Section 2 header contents)
   ++  [Block (Plain [TeX "\\end{frame}"])] where
     leftContents   =  takeWhile (/= Block HorizontalRule) contents
     rightContents  =  drop 1 $ dropWhile (/= Block HorizontalRule) contents
-  
+
 transformBeamer config (Section 2 header contents)
   =   [Block (Plain (TeX "\\begin{frame}{" : header ++ [TeX "}"]))]
   ++  transformFrameBlocks config 1 contents
@@ -112,10 +112,10 @@ transformBeamer config (Section 2 header contents)
 
 transformBeamer _ content
   = [content]
-  
+
 transformFrameBlocks config i (Block HorizontalRule : rest)
   | pause config
-  =   [Block $ Plain [TeX "\\pause"]] 
+  =   [Block $ Plain [TeX "\\pause"]]
   ++  transformFrameBlocks config (succ i) rest
 
 transformFrameBlocks config i (Block (BlockQuote blocks) : rest)
@@ -128,15 +128,15 @@ transformFrameBlocks config i (Block (BlockQuote blocks) : rest)
 transformFrameBlocks config i (content : rest)
   =   [content]
   ++  transformFrameBlocks config i rest
-  
+
 transformFrameBlocks config i []
   =   []
-  
+
 transformBlock :: Config -> Block -> [Block]
 transformBlock _ (CodeBlock (identifier, classes, attributes) code)
-  |   "literate" `elem` classes  
+  |   "literate" `elem` classes
   =   [Plain [TeX ("\\begin{code}\n" ++ escapeCodeBlock code ++ "\n\\end{code}")]]
-  
+
   |   otherwise
   =   [Plain [TeX ("\\begin{spec}\n" ++ escapeCodeBlock code ++ "\n\\end{spec}")]]
 transformBlock _ (RawHtml s)
@@ -144,15 +144,15 @@ transformBlock _ (RawHtml s)
 transformBlock _ x
   = [x]
 
-transformInline :: Inline -> Inline 
+transformInline :: Inline -> Inline
 transformInline (Str text) = Str (escapeBar text)
 transformInline (Code code) = TeX ("|" ++ escapeCodeInline code ++ "|")
-transformInline (Math t m) = Math t (escapeBar m)	
+transformInline (Math t m) = Math t (escapeBar m)
 transformInline (TeX text) = TeX (unescapeComments $ text)
 transformInline (HtmlInline text) = error "raw html not supported by pandoc-lit"
 transformInline (Link text (s1, s2)) = Link text (escapeBar s1, escapeBar s2)
 transformInline x = x
- 
+
 escapeCodeInline = escapeBar . escapeTH
 escapeCodeBlock = escapeInComments . escapeTH
 
@@ -163,7 +163,7 @@ escapeInComments = code where
   code ('{' : '-' : '"' : text)    =  '{' : '-' : '"' : texEscape text
   code ('{' : '-' : text)          =  '{' : '-' : rangeComment text
   code (c : text)                  =  c : code text
-                                   
+
   lineComment []                   =  []
   lineComment ('\n' : text)        =  '\n' : code text
   lineComment ('|' : text)         =  '|' : '|' : lineComment text
@@ -174,7 +174,7 @@ escapeInComments = code where
   lineComment ('{' : text)         =  '\\' : '{' : lineComment text
   lineComment ('}' : text)         =  '\\' : '}' : lineComment text
   lineComment (c : text)           =  c : lineComment text
-                                   
+
   rangeComment []                  =  []
   rangeComment ('|' : text)        =  '|' : '|' : rangeComment text
   rangeComment ('$' : text)        =  '\\' : '$' : rangeComment text
@@ -185,7 +185,7 @@ escapeInComments = code where
   rangeComment ('}' : text)        =  '\\' : '}' : rangeComment text
   rangeComment ('-' : '}' : text)  =  '-' : '}' : code text
   rangeComment (c : text)          =  c : rangeComment text
-  
+
   texEscape []                     =  []
   texEscape ('"' : '-' : '}' : text) = '"' : '-' : '}' : code text
   texEscape (c : text ) = c : texEscape text
@@ -212,12 +212,12 @@ addIncludes (Pandoc meta blocks)
 isText text inlines = inlines == (intersperse Space . map Str . words $ text)
 
 onContent :: ([Content] -> [Content]) -> Pandoc -> Pandoc
-onContent f (Pandoc meta blocks) 
+onContent f (Pandoc meta blocks)
   = Pandoc meta . concatMap fromContent . f . toContent $ blocks
 
 transformDoc :: Config -> Pandoc -> Pandoc
 transformDoc config
-  = onContent 
+  = onContent
     (  if beamer config then processWith (concatMap (transformBeamer config)) else id
     .  maybe id (processWith . concatMap . transformAbstract)   (abstract config)
     .  maybe id (processWith . transformToc)                    (toc config)
@@ -235,13 +235,13 @@ readDoc config = readMarkdown parserState
 
 writeDoc :: Config -> Pandoc -> String
 writeDoc config = writeLaTeX options where
-  options 
+  options
     = defaultWriterOptions
       { writerStandalone = maybe False (const True) (template config)
       , writerTemplate = fromMaybe "" (template config)
       , writerVariables = variables config
       , writerNumberSections = True
-      }        
+      }
 
 -- escaping of TeX comments
 
@@ -250,17 +250,17 @@ escapeComments = unlines . skipFirst 3 . lines where
   skipFirst 0 text                =  outside text
   skipFirst n (x@('%' : _) : xs)  =  x : skipFirst (pred n) xs
   skipFirst n text                =  outside text
-  
+
   outside []                =  []
   outside (x@('%' : _) : xs)  =  inside [x] xs
   outside (x : xs)          =  x : outside xs
-  
+
   inside acc (x@('%' : _) : xs)  =  inside (x : acc) xs
   inside acc xs                =  concat [ [ignoreTag "begin"]
                                          , reverse acc
                                          , [ignoreTag "end"]
                                          , outside xs ]
-  
+
 ignoreTag c = "\\" ++ c ++ "{pandocShouldIgnoreTheseTeXComments}"
 ignoreBegin = ignoreTag "begin"
 ignoreEnd = ignoreTag "end"
@@ -273,17 +273,17 @@ unescapeComments text
   = reverse text'''
 unescapeComments text
   = escapeBar text
-  
+
 -- includes
 includeIncludes :: Config -> String -> IO String
 includeIncludes config = fmap unlines . mapM go . lines where
-  go line 
+  go line
     | Just rest <- stripPrefix "%include " $ line = do
       let filename = dropWhile isSpace rest
       let filename' = map f filename ++ ".lhs" where
             f '.' = pathSeparator
             f c   = c
-      exist <- doesFileExist filename' 
+      exist <- doesFileExist filename'
       if exist
         then do text <- UTF8.readFile filename'
                 text' <- transformEval config filename' text
@@ -291,10 +291,10 @@ includeIncludes config = fmap unlines . mapM go . lines where
         else return line
   go line
     = return line
-    
+
 -- option processing
 data Config
-  =  Config 
+  =  Config
      { includes          ::  [String]
      , files             ::  [FilePath]
      , abstract          ::  Maybe String
@@ -309,11 +309,11 @@ data Config
      , titlePage         ::  Maybe String
      , notes             ::  Bool
      , pause             ::  Bool
-     } 
+     }
   deriving Show
 
 defaultConfig
-  =  Config 
+  =  Config
      { includes          =  []
      , files             =  []
      , abstract          =  Nothing
@@ -334,23 +334,23 @@ data Command
   =  Transform Config
   |  Help
   deriving Show
-  
-optInclude     =  Option  ""   ["include"]     (ReqArg processInclude "FILE") 
+
+optInclude     =  Option  ""   ["include"]     (ReqArg processInclude "FILE")
                           "emit a lhs2tex \"%include FILE\" directive"
-                          
-optProcessIncludes 
+
+optProcessIncludes
                = Option   ""   ["process-includes"] (NoArg processProcessIncludes)
                           "process lhs2tex %include directives by pandoc-lit"
-               
+
 optHelp        =  Option  ""   ["help"]        (NoArg (const Help))
                           "display this help and exit"
-               
+
 optFile        =  Option  ""   ["file"]        (ReqArg processFile "FILE")
-                          "process FILE" 
-               
+                          "process FILE"
+
 optAbstract    =  Option  ""   ["abstract"]    (OptArg processAbstract "HEADER")
                           "transform the first section named HEADER into an \"abstract\" environment"
-               
+
 optTitlePage    =  Option  ""   ["title-page"] (OptArg processTitlePage "HEADER")
                           "transform the first section named HEADER into a title page"
 
@@ -359,7 +359,7 @@ optToc         =  Option  ""   ["toc"]         (OptArg processToc "HEADER")
 
 optComments    =  Option  ""   ["comments"]    (NoArg processComments)
                           "preserve TeX comments (lines starting with %)"
-               
+
 optNotes       =  Option  ""   ["notes"]       (NoArg processNotes)
                           "convert block quotes into beamer notes"
 
@@ -380,14 +380,14 @@ processStandalone (Transform config)
   =  Transform (config {standalone = True})
 processStandalone x
   =  x
-                          
+
 optBeamer      =  Option  ""   ["beamer"]      (NoArg processBeamer)
                           "produce output for beamer package"
 
 optEval        =  Option  ""   ["eval"]        (ReqArg processEval "DIR")
                           "handle \\eval{...} by calling ghci -iDIR"
-                          
-processVariable arg (Transform (config@Config {variables = old})) 
+
+processVariable arg (Transform (config@Config {variables = old}))
   = case break (`elem` ":=") arg of
       (k, _ : v)  ->  Transform (config {variables = old ++ [(k, v)]})
       _           ->  error ("Could not parse `" ++ arg ++ "' as a key/value pair (k=v or k:v)")
@@ -409,7 +409,7 @@ processComments (Transform (config))
 processComments x
   =  x
 
-  
+
 processNotes (Transform (config))
   =  Transform (config {notes = True})
 processNotes x
@@ -423,8 +423,8 @@ processPause x
 processEval dir (Transform config)
   = Transform (config {eval = Just dir})
 processEval dir x
-  = x 
-  
+  = x
+
 processAbstract (Just section) (Transform config)
   =  Transform (config {abstract = Just section})
 processAbstract Nothing (Transform config)
@@ -439,7 +439,7 @@ processTitlePage Nothing (Transform config)
 processTitlePage section x
   =  x
 
-  
+
 processToc (Just section) (Transform config)
   =  Transform (config {toc = Just section})
 processToc Nothing (Transform config)
@@ -449,9 +449,9 @@ processToc section x
 
 processTemplate file (Transform config)
   =  Transform (config {template = Just file, standalone = True})
-processTemplate _ x 
+processTemplate _ x
   =  x
-  
+
 processBeamer (Transform config)
   = Transform (config {beamer = True})
 processBeamer x
@@ -461,7 +461,7 @@ processProcessIncludes (Transform config)
   = Transform (config {processIncludes = True})
 processProcessIncludes x
   = x
-  
+
 options
   = [ optInclude
     , optHelp
@@ -487,9 +487,9 @@ usageHeader = "Usage: pandoc-lit [OPTION...] files..."
 main :: IO ()
 main = do
   args <- getArgs
-  
+
   case getOpt (ReturnInOrder processFile) options args of
-    (configT, [], []) 
+    (configT, [], [])
       -> case foldr (.) id configT (Transform defaultConfig) of
            Transform config  -> transform config
            Help              -> help stdout >> exitSuccess
@@ -501,33 +501,33 @@ main = do
 help h = hPutStrLn h (usageInfo usageHeader options)
 
 usage h = do
-  hPutStrLn h "Usage: pandoc-lit [options] [files]" 
+  hPutStrLn h "Usage: pandoc-lit [options] [files]"
   hPutStrLn h "pandoc-lit --help for more information."
 
 readDefaultTemplate :: IO String
-readDefaultTemplate 
+readDefaultTemplate
   = readDataFile ("templates" </> "lhs2tex"  <.> "template")
 
 readDataFile :: FilePath -> IO String
-readDataFile fname 
+readDataFile fname
   = do u <- getAppUserDataDirectory "pandoc"
        (UTF8.readFile $ u </> fname)
          `catch` (\_ -> getDataFileName fname >>= UTF8.readFile)
   `catch` (\_ -> getDataFileName fname >>= UTF8.readFile)
-  
+
 readTemplate :: Config -> IO (Maybe String)
 readTemplate config = do
   case template config of
-    Just filename 
+    Just filename
       -> return Just `ap` readFileOrGetContents filename
-      
-    Nothing 
+
+    Nothing
       -> if standalone config
            then return Just `ap` readDefaultTemplate
            else return Nothing
-      
+
 transform :: Config -> IO ()
-transform (config@Config {files = []}) 
+transform (config@Config {files = []})
   = transform (config {files = ["-"]})
 
 transform config = do
@@ -538,13 +538,13 @@ transform config = do
 
 readFileOrGetContents "-" = getContents
 readFileOrGetContents file = UTF8.readFile file
-  
+
 transformFile :: Config -> FilePath -> IO ()
 transformFile config file = do
   text <- readFileOrGetContents file
   text' <- transformEval config file text
   text'' <- if processIncludes config then includeIncludes config text' else return text'
-  let text''' | preserveComments config = escapeComments text'' | otherwise = text''  
+  let text''' | preserveComments config = escapeComments text'' | otherwise = text''
   putStrLn . avoidUTF8 . writeDoc config . transformDoc config . readDoc config $ text'''
 
 avoidUTF8 :: String -> String
@@ -552,21 +552,21 @@ avoidUTF8 = concatMap f where
   f c  =  if c <= toEnum 128
             then [c]
             else "{\\char" ++ show (fromEnum c) ++ "}"
-  
+
 transformEval :: Config -> FilePath -> String -> IO String
 transformEval Config {eval = Just dir} path text = result where
   result :: IO String
   result = process text (gmatchRegexPR "\\\\eval{([^\\}]*)}" text)
-  
+
   process :: String -> [((String, (String, String)),[(Int, String)])] -> IO String
-  process post [] = do 
+  process post [] = do
     return post
-    
+
   process _ (((_, (pre, post)), [(1, arg)]) : rest) = do
-    this <- execute arg 
+    this <- execute arg
     that <- process post rest
     return (pre ++ "`" ++ this ++ "`" ++ that)
-  
+
   execute arg = do
     readProcess "ghci" ["-v0", "-i" ++ dir, path] arg
 
