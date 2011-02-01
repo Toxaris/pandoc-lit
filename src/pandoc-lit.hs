@@ -5,7 +5,7 @@
 {-# LANGUAGE PatternGuards, DeriveDataTypeable #-}
 module Main where
 
-import Text.Pandoc
+import Text.Pandoc hiding (processWith)
 
 import Control.Monad (liftM, ap)
 
@@ -26,103 +26,80 @@ import Data.Char (isSpace)
 
 import Text.RegexPR
 
+import Text.Pandoc.Scripting.Structure (Structure (Block, Section), fromStructure, toStructure, onStructure)
+
 import Paths_pandoc_lit (getDataFileName)
 
 -- helper
 
 stripSuffix suffix = fmap reverse . stripPrefix (reverse suffix) . reverse
 
--- view as hierarchy
-
-data Content
-  = Block Block
-  | Section Int [Inline] [Content]
-  deriving (Eq, Show, Typeable, Data)
-
-toContent :: [Block] -> [Content]
-toContent = fst . go 0
-  where
-  go outer [] = ([], [])
-
-  go outer rest@(Header inner _ : _) | inner <= outer
-    =  ([], rest)
-
-  go outer (Header inner text : rest)
-    =  (section : content'', rest'')
-    where (content', rest') = go inner rest
-          (content'',  rest'') = go outer rest'
-          section = Section inner text content'
-
-  go outer (first : rest)
-    =  (block : content', rest')
-    where (content', rest') = go outer rest
-          block = Block first
-
-fromContent :: Content -> [Block]
-fromContent (Block block)
-  = [block]
-fromContent (Section level header content)
-  = Header level header : concatMap fromContent content
-
 -- transformation
 
-transformAbstract :: String -> Content -> [Content]
+transformAbstract :: String -> Structure -> [Structure]
 transformAbstract abstract (Section _ header contents)
   |   isText abstract header
-  =   Block (Plain [TeX "\\begin{abstract}"])
-  :   contents
-  ++  [Block (Plain [TeX "\\end{abstract}"])]
+  =   [Block $ RawBlock "tex" "\\begin{abstract}"]
+  ++  contents
+  ++  [Block $ RawBlock "tex" "\\end{abstract}"]
 transformAbstract abstract content
   = [content]
 
-transformToc :: String -> Content -> Content
+transformToc :: String -> Structure -> Structure
 transformToc toc (Section _ header contents)
   |   isText toc header
-  =   Block (Plain [TeX "\\clearpage\\tableofcontents\\clearpage"])
+  =   Block $ RawBlock "tex" "\\clearpage\\tableofcontents\\clearpage"
 transformToc toc content
   =   content
 
-transformBeamer :: Config -> Content -> [Content]
+transformBeamer :: Config -> Structure -> [Structure]
 transformBeamer config (Section _ header contents)
   |   Just tp <- titlePage config
   ,   isText tp header
-  =   Block (Plain [TeX "\\begin{frame}\n\\titlepage"])
-  :   transformFrameBlocks config 1 contents
-  ++  [Block (Plain [TeX "\\end{frame}"])]
+  =   [Block $ RawBlock "tex" "\\begin{frame}\n\\titlepage"]
+  ++  transformFrameBlocks config 1 contents
+  ++  [Block $ RawBlock "tex" "\\end{frame}"]
 
 transformBeamer config (Section 2 header contents)
   |   Block HorizontalRule `elem` contents
-  =   [Block (Plain (TeX "\\begin{frame}{" : header ++ [TeX "}"]))]
-  ++  [Block (Plain [TeX "\\begin{columns}[T]"])]
-  ++  [Block (Plain [TeX "\\begin{column}{0.45\\textwidth}"])]
-  ++  transformFrameBlocks config 1 leftContents
-  ++  [Block (Plain [TeX "\\end{column}"])]
-  ++  [Block (Plain [TeX "\\begin{column}{0.45\\textwidth}"])]
-  ++  transformFrameBlocks config 1 rightContents
-  ++  [Block (Plain [TeX "\\end{column}"])]
-  ++  [Block (Plain [TeX "\\end{columns}"])]
-  ++  [Block (Plain [TeX "\\end{frame}"])] where
-    leftContents   =  takeWhile (/= Block HorizontalRule) contents
-    rightContents  =  drop 1 $ dropWhile (/= Block HorizontalRule) contents
+  =   [Block $ Plain
+      $   [RawInline "tex" "\\begin{frame}{"] 
+      ++  header 
+      ++ [RawInline "tex" "}"]]
+  ++  [Block $ RawBlock "tex" $ "\\begin{columns}[T]"]
+  ++  [Block $ RawBlock "tex" $ "\\begin{column}{0.45\\textwidth}"]
+  ++  transformFrameBlocks config 1 leftStructures
+  ++  [Block $ RawBlock "tex" $ "\\end{column}"]
+  ++  [Block $ RawBlock "tex" $ "\\begin{column}{0.45\\textwidth}"]
+  ++  transformFrameBlocks config 1 rightStructures
+  ++  [Block $ RawBlock "tex" $ "\\end{column}"]
+  ++  [Block $ RawBlock "tex" $ "\\end{columns}"]
+  ++  [Block $ RawBlock "tex" $ "\\end{frame}"] where
+    leftStructures   =  takeWhile (/= Block HorizontalRule) contents
+    rightStructures  =  drop 1 $ dropWhile (/= Block HorizontalRule) contents
 
 transformBeamer config (Section 2 header contents)
-  =   [Block (Plain (TeX "\\begin{frame}{" : header ++ [TeX "}"]))]
+  =   [Block $ Plain
+      $   [RawInline "tex" "\\begin{frame}{"] 
+      ++  header 
+      ++  [RawInline "tex" "}"]]
   ++  transformFrameBlocks config 1 contents
-  ++  [Block (Plain [TeX "\\end{frame}"])]
+  ++  [Block $ RawBlock "tex" $ "\\end{frame}"]
 
 transformBeamer _ content
   = [content]
 
+transformFrameBlocks :: Config -> Int -> [Structure] -> [Structure]
 transformFrameBlocks config i (Block HorizontalRule : rest)
   | pause config
-  =   [Block $ Plain [TeX "\\pause"]]
+  =   [Block $ RawBlock "tex" $ "\\pause"]
   ++  transformFrameBlocks config (succ i) rest
 
 transformFrameBlocks config i (Block (BlockQuote blocks) : rest)
   | notes config
-  =   [Block $ Plain  [TeX $ "\\note<alert@@" ++ show i ++ ">{"]]
+  =   [Block $ RawBlock "tex" $ "\\note<alert@@" ++ show i ++ ">{"]
   ++  map Block blocks
-  ++  [Block $ Plain  [TeX "}"]]
+  ++  [Block $ RawBlock "tex" $ "}"]
   ++  transformFrameBlocks config i rest
 
 transformFrameBlocks config i (content : rest)
@@ -135,21 +112,25 @@ transformFrameBlocks config i []
 transformBlock :: Config -> Block -> [Block]
 transformBlock _ (CodeBlock (identifier, classes, attributes) code)
   |   "literate" `elem` classes
-  =   [Plain [TeX ("\\begin{code}\n" ++ escapeCodeBlock code ++ "\n\\end{code}")]]
-
+  =   [RawBlock "latex" $ "\\begin{code}\n" ++ escapeCodeBlock code ++ "\n\\end{code}"]
   |   otherwise
-  =   [Plain [TeX ("\\begin{spec}\n" ++ escapeCodeBlock code ++ "\n\\end{spec}")]]
-transformBlock _ (RawHtml s)
-  =   error "raw html not supported by pandoc-lit"
+  =   [RawBlock "latex" $ "\\begin{spec}\n" ++ escapeCodeBlock code ++ "\n\\end{spec}"]
+transformBlock _ (RawBlock "tex" text)
+  =   [RawBlock "tex" (unescapeComments $ text)]
+transformBlock _ (RawBlock "latex" text)
+  =   [RawBlock "latex" (unescapeComments $ text)]
+transformBlock _ (RawBlock format text)
+  =   error $ "raw " ++ format ++ " not supported by pandoc-lit"
 transformBlock _ x
   = [x]
 
 transformInline :: Inline -> Inline
 transformInline (Str text) = Str (escapeBar text)
-transformInline (Code code) = TeX ("|" ++ escapeCodeInline code ++ "|")
+transformInline (Code attr code) = RawInline "tex" $ ("|" ++ escapeCodeInline code ++ "|")
 transformInline (Math t m) = Math t (escapeBar m)
-transformInline (TeX text) = TeX (unescapeComments $ text)
-transformInline (HtmlInline text) = error "raw html not supported by pandoc-lit"
+transformInline (RawInline "tex" text) = RawInline "tex" $ unescapeComments $ text
+transformInline (RawInline "latex" text) = RawInline "latex" $ unescapeComments $ text
+transformInline (RawInline format text) = error $ "raw " ++ format ++ " not supported by pandoc-lit"
 transformInline (Link text (s1, s2)) = Link text (escapeBar s1, escapeBar s2)
 transformInline x = x
 
@@ -207,23 +188,19 @@ escapeTH
 
 addIncludes :: Pandoc -> Pandoc
 addIncludes (Pandoc meta blocks)
-  = Pandoc meta (Plain [TeX "%include polycode.fmt"] : blocks)
+  = Pandoc meta (RawBlock "tex" "%include polycode.fmt" : blocks)
 
 isText text inlines = inlines == (intersperse Space . map Str . words $ text)
 
-onContent :: ([Content] -> [Content]) -> Pandoc -> Pandoc
-onContent f (Pandoc meta blocks)
-  = Pandoc meta . concatMap fromContent . f . toContent $ blocks
-
 transformDoc :: Config -> Pandoc -> Pandoc
 transformDoc config
-  = onContent
-    (  if beamer config then processWith (concatMap (transformBeamer config)) else id
-    .  maybe id (processWith . concatMap . transformAbstract)   (abstract config)
-    .  maybe id (processWith . transformToc)                    (toc config)
+  = onStructure
+    (  if beamer config then bottomUp (concatMap (transformBeamer config)) else id
+    .  maybe id (bottomUp . concatMap . transformAbstract)   (abstract config)
+    .  maybe id (bottomUp . transformToc)                    (toc config)
     )
-  . processWith (concatMap (transformBlock config))
-  . processWith transformInline
+  . bottomUp (concatMap (transformBlock config))
+  . bottomUp transformInline
 
 parserState = defaultParserState
   { stateLiterateHaskell = True
