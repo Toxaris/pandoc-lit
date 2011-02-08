@@ -13,7 +13,7 @@ import System.Environment (getArgs)
 import System.Console.GetOpt
 import System.Exit (exitFailure, exitSuccess)
 import System.IO (stdout, stderr, hPutStrLn)
-import System.Directory (doesFileExist, getAppUserDataDirectory)
+import System.Directory (getCurrentDirectory, doesFileExist, getAppUserDataDirectory)
 import System.FilePath (pathSeparator, (</>), (<.>))
 import System.Process (readProcess)
 
@@ -39,9 +39,9 @@ stripSuffix suffix = fmap reverse . stripPrefix (reverse suffix) . reverse
 transformAbstract :: String -> Structure -> [Structure]
 transformAbstract abstract (Section _ header contents)
   |   isText abstract header
-  =   [Block $ RawBlock "tex" "\\begin{abstract}"]
+  =   [Block $ RawBlock "latex" "\\begin{abstract}"]
   ++  contents
-  ++  [Block $ RawBlock "tex" "\\end{abstract}"]
+  ++  [Block $ RawBlock "latex" "\\end{abstract}"]
 transformAbstract abstract content
   = [content]
 
@@ -130,9 +130,34 @@ transformInline (Code attr code) = RawInline "tex" $ ("|" ++ escapeCodeInline co
 transformInline (Math t m) = Math t (escapeBar m)
 transformInline (RawInline "tex" text) = RawInline "tex" $ unescapeComments $ text
 transformInline (RawInline "latex" text) = RawInline "latex" $ unescapeComments $ text
-transformInline (RawInline format text) = error $ "raw " ++ format ++ " not supported by pandoc-lit"
+transformInline (RawInline format text) = error $ "raw " ++ format ++ " not supported by pandoc-lit (" ++ text ++ ")"
 transformInline (Link text (s1, s2)) = Link text (escapeBar s1, escapeBar s2)
 transformInline x = x
+
+transformFloats :: [Block] -> [Block]
+transformFloats = begin where
+  begin (Para [RawInline "tex" "\\figure", Space, Str tag] : rest)
+    =  Plain [RawInline "tex" "\\begin{figure}[t]"]
+    :  caption "figure" tag rest
+  begin (Para [RawInline "tex" "\\figure*", Space, Str tag] : rest)
+    =  Plain [RawInline "tex" "\\begin{figure*}[t]"]
+    :  caption "figure*" tag rest
+  begin (block : rest)
+    =  block : begin rest
+  begin []
+    =  []
+  
+  caption env tag (Para (RawInline "tex" "\\caption" : text) : rest)
+    =  Plain  (concat
+                [  [RawInline "tex" $ "\\caption{"]
+                ,  text
+                ,  [RawInline "tex" $ "}"]])
+    :  Plain  [RawInline "tex" $ "\\label{" ++ tag ++ "}"]
+    :  Plain  [RawInline "tex" $ "\\end{" ++ env ++ "}"]
+    :  begin rest
+  
+  caption env tag (block : rest)
+    =  block : caption env tag rest
 
 escapeCodeInline = escapeBar . escapeTH
 escapeCodeBlock = escapeInComments . escapeTH
@@ -201,6 +226,10 @@ transformDoc config
     )
   . bottomUp (concatMap (transformBlock config))
   . bottomUp transformInline
+  . onBlocks transformFloats 
+
+onBlocks :: ([Block] -> [Block]) -> Pandoc -> Pandoc
+onBlocks f (Pandoc meta blocks) = Pandoc meta (f blocks)
 
 parserState = defaultParserState
   { stateLiterateHaskell = True
@@ -244,12 +273,22 @@ ignoreEnd = ignoreTag "end"
 
 unescapeComments :: String -> String
 unescapeComments text
-  | Just text'    <-  stripPrefix (ignoreTag "begin") text
-  , text''        <-  reverse text'
-  , Just text'''  <-  stripPrefix (reverse (ignoreTag "end")) text''
-  = reverse text'''
+  |  Just text'    <-  stripPrefix (ignoreTag "begin") text
+  ,  text''        <-  reverse text'
+  ,  Just text'''  <-  stripPrefix (reverse (ignoreTag "end")) text''
+  =  unlines . map handleFigures . lines . reverse $ text'''
 unescapeComments text
-  = escapeBar text
+  =  escapeBar text
+
+handleFigures :: String -> String
+handleFigures "%figure"
+  =  "\\begin{figure*}"
+handleFigures "%caption"
+  =  "\\caption{"
+handleFigures text | Just text' <- stripPrefix "%endfigure " text
+  =  "}\\label{" ++ takeWhile (/= '\n') text' ++ "}\\end{figure*}" 
+handleFigures text
+  = text
 
 -- includes
 includeIncludes :: Config -> String -> IO String
@@ -257,17 +296,16 @@ includeIncludes config = fmap unlines . mapM go . lines where
   go line
     | Just rest <- stripPrefix "%include " $ line = do
       let filename = dropWhile isSpace rest
-      let filename' = map f filename ++ ".lhs" where
-            f '.' = pathSeparator
-            f c   = c
-      exist <- doesFileExist filename'
+      exist <- doesFileExist filename
       if exist
-        then do text <- UTF8.readFile filename'
-                text' <- transformEval config filename' text
+        then do text <- UTF8.readFile filename
+                text' <- transformEval config filename text
                 includeIncludes config text'
-        else return line
-  go line
-    = return line
+        else do
+          return line
+          
+  go line = do
+    return line
 
 -- option processing
 data Config
@@ -518,10 +556,14 @@ readFileOrGetContents file = UTF8.readFile file
 
 transformFile :: Config -> FilePath -> IO ()
 transformFile config file = do
-  text <- readFileOrGetContents file
-  text' <- transformEval config file text
-  text'' <- if processIncludes config then includeIncludes config text' else return text'
-  let text''' | preserveComments config = escapeComments text'' | otherwise = text''
+  text         <-  readFileOrGetContents file
+  text'        <-  transformEval config file text
+  text''       <-  if processIncludes config 
+                     then includeIncludes config text' 
+                     else return text'
+  let text'''  =   if preserveComments config
+                     then escapeComments text'' 
+                     else text''
   putStrLn . avoidUTF8 . writeDoc config . transformDoc config . readDoc config $ text'''
 
 avoidUTF8 :: String -> String
