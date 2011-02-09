@@ -137,10 +137,10 @@ transformInline x = x
 transformFloats :: [Block] -> [Block]
 transformFloats = begin where
   begin (Para [RawInline "tex" "\\figure", Space, Str tag] : rest)
-    =  Plain [RawInline "tex" "\\begin{figure}[t]"]
+    =  Plain [RawInline "tex" "\\begin{figure}"]
     :  caption "figure" tag rest
   begin (Para [RawInline "tex" "\\figure*", Space, Str tag] : rest)
-    =  Plain [RawInline "tex" "\\begin{figure*}[t]"]
+    =  Plain [RawInline "tex" "\\begin{figure*}"]
     :  caption "figure*" tag rest
   begin (block : rest)
     =  block : begin rest
