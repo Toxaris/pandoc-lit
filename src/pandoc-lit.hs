@@ -6,7 +6,10 @@
 module Main where
 
 import Text.Pandoc hiding (processWith)
+import Text.Pandoc.Biblio (processBiblio)
+import Text.Pandoc.Shared (findDataFile)
 
+import Text.CSL (readBiblioFile, refId, Reference)
 import Control.Monad (liftM, ap)
 
 import System.Environment (getArgs)
@@ -21,7 +24,7 @@ import qualified System.IO.UTF8 as UTF8
 
 import Data.List (intersperse, stripPrefix)
 import Data.Data (Data, Typeable)
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromMaybe, maybeToList)
 import Data.Char (isSpace)
 
 import Text.RegexPR
@@ -237,7 +240,8 @@ parserState = defaultParserState
   }
 
 readDoc :: Config -> String -> Pandoc
-readDoc config = readMarkdown parserState
+readDoc config = readMarkdown 
+  parserState { stateCitations = map refId (references config) }
 
 writeDoc :: Config -> Pandoc -> String
 writeDoc config = writeLaTeX options where
@@ -247,6 +251,7 @@ writeDoc config = writeLaTeX options where
       , writerTemplate = fromMaybe "" (template config)
       , writerVariables = variables config
       , writerNumberSections = True
+      , writerBiblioFiles = maybeToList (bibliography config)
       }
 
 -- escaping of TeX comments
@@ -324,6 +329,8 @@ data Config
      , titlePage         ::  Maybe String
      , notes             ::  Bool
      , pause             ::  Bool
+     , bibliography      ::  Maybe String
+     , references        ::  [Reference]
      }
   deriving Show
 
@@ -343,6 +350,8 @@ defaultConfig
      , titlePage         =  Nothing
      , notes             =  False
      , pause             =  False
+     , bibliography      =  Nothing
+     , references        =  []
      }
 
 data Command
@@ -401,6 +410,9 @@ optBeamer      =  Option  ""   ["beamer"]      (NoArg processBeamer)
 
 optEval        =  Option  ""   ["eval"]        (ReqArg processEval "DIR")
                           "handle \\eval{...} by calling ghci -iDIR"
+
+optBibliography=  Option  ""   ["bibliography"](ReqArg processBibliography "BIB")
+                          "use bibliography BIB for references"
 
 processVariable arg (Transform (config@Config {variables = old}))
   = case break (`elem` ":=") arg of
@@ -476,6 +488,11 @@ processProcessIncludes (Transform config)
   = Transform (config {processIncludes = True})
 processProcessIncludes x
   = x
+  
+processBibliography bib (Transform config)
+  = Transform (config {bibliography = Just bib})
+processBibliography bib x
+  = x
 
 options
   = [ optInclude
@@ -493,6 +510,7 @@ options
     , optTitlePage
     , optNotes
     , optPause
+    , optBibliography
     ]
 
 -- main program
@@ -546,10 +564,18 @@ transform (config@Config {files = []})
   = transform (config {files = ["-"]})
 
 transform config = do
+  -- read template
   templateText <- readTemplate config
   let config' = config {template = templateText}
+  
+  -- output include directives
   mapM_ (\x -> putStrLn ("%include " ++ x)) (includes config')
-  mapM_ (transformFile config') (files config)
+
+  -- read bibliography
+  refs  <-  maybe (return []) readBiblioFile (bibliography config)
+  let config'' = config' {references = refs}
+  
+  mapM_ (transformFile config'') (files config'')
 
 readFileOrGetContents "-" = getContents
 readFileOrGetContents file = UTF8.readFile file
@@ -564,7 +590,12 @@ transformFile config file = do
   let text'''  =   if preserveComments config
                      then escapeComments text'' 
                      else text''
-  putStrLn . avoidUTF8 . writeDoc config . transformDoc config . readDoc config $ text'''
+  cslfile    <-  findDataFile Nothing "default.csl"
+  
+  let doc    =   readDoc config text'''
+  let doc'   =   transformDoc config doc
+  doc''      <-  processBiblio cslfile (references config) doc'
+  putStrLn . avoidUTF8 . writeDoc config $ doc'' 
 
 avoidUTF8 :: String -> String
 avoidUTF8 = concatMap f where
