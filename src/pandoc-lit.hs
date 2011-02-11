@@ -331,6 +331,7 @@ data Config
      , pause             ::  Bool
      , bibliography      ::  Maybe String
      , references        ::  [Reference]
+     , csl               ::  Maybe String
      }
   deriving Show
 
@@ -352,6 +353,7 @@ defaultConfig
      , pause             =  False
      , bibliography      =  Nothing
      , references        =  []
+     , csl               =  Nothing
      }
 
 data Command
@@ -413,6 +415,9 @@ optEval        =  Option  ""   ["eval"]        (ReqArg processEval "DIR")
 
 optBibliography=  Option  ""   ["bibliography"](ReqArg processBibliography "BIB")
                           "use bibliography BIB for references"
+
+optCSL         =  Option  ""   ["csl"](ReqArg processCSL "CSL")
+                          "use style sheet CSL for references"
 
 processVariable arg (Transform (config@Config {variables = old}))
   = case break (`elem` ":=") arg of
@@ -494,6 +499,11 @@ processBibliography bib (Transform config)
 processBibliography bib x
   = x
 
+processCSL filename (Transform config)
+  = Transform (config {csl = Just filename})
+processCSL filename x
+  = x
+
 options
   = [ optInclude
     , optHelp
@@ -511,6 +521,7 @@ options
     , optNotes
     , optPause
     , optBibliography
+    , optCSL
     ]
 
 -- main program
@@ -590,7 +601,10 @@ transformFile config file = do
   let text'''  =   if preserveComments config
                      then escapeComments text'' 
                      else text''
-  cslfile    <-  findDataFile Nothing "default.csl"
+
+  cslfile    <-  case csl config of
+                   Just filename  ->  return filename
+                   Nothing        ->  findDataFile Nothing "default.csl"
   
   let doc    =   readDoc config text'''
   let doc'   =   transformDoc config doc
