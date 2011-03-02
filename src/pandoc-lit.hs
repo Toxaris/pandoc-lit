@@ -112,30 +112,34 @@ transformFrameBlocks config i (content : rest)
 transformFrameBlocks config i []
   =   []
 
-transformBlock :: Config -> Block -> [Block]
-transformBlock _ (CodeBlock (identifier, classes, attributes) code)
+transformBlock :: Config -> Block -> Block
+transformBlock config (CodeBlock (identifier, classes, attributes) code)
   |   "literate" `elem` classes
-  =   [RawBlock "latex" $ "\\begin{code}\n" ++ escapeCodeBlock code ++ "\n\\end{code}"]
+  =   RawBlock "latex" $ "\\begin{code}\n" ++ escapeCodeBlock config code ++ "\n\\end{code}"
   |   otherwise
-  =   [RawBlock "latex" $ "\\begin{spec}\n" ++ escapeCodeBlock code ++ "\n\\end{spec}"]
+  =   RawBlock "latex" $ "\\begin{spec}\n" ++ escapeCodeBlock config code ++ "\n\\end{spec}"
 transformBlock _ (RawBlock "tex" text)
-  =   [RawBlock "tex" (unescapeComments $ text)]
+  =   RawBlock "tex" (unescapeComments $ text)
 transformBlock _ (RawBlock "latex" text)
-  =   [RawBlock "latex" (unescapeComments $ text)]
+  =   RawBlock "latex" (unescapeComments $ text)
 transformBlock _ (RawBlock format text)
   =   error $ "raw " ++ format ++ " not supported by pandoc-lit"
 transformBlock _ x
-  = [x]
+  =   x
 
-transformInline :: Inline -> Inline
-transformInline (Str text) = Str (escapeBar text)
-transformInline (Code attr code) = RawInline "tex" $ ("|" ++ escapeCodeInline code ++ "|")
-transformInline (Math t m) = Math t (escapeBar m)
-transformInline (RawInline "tex" text) = RawInline "tex" $ unescapeComments $ text
-transformInline (RawInline "latex" text) = RawInline "latex" $ unescapeComments $ text
-transformInline (RawInline format text) = error $ "raw " ++ format ++ " not supported by pandoc-lit (" ++ text ++ ")"
-transformInline (Link text (s1, s2)) = Link text (escapeBar s1, escapeBar s2)
-transformInline x = x
+escapeCodeBlock config
+  | th config = escapeInComments . escapeTH
+  | otherwise = escapeInComments
+
+transformInline :: Config -> Inline -> Inline
+transformInline config (Str text) = Str (escapeBar text)
+transformInline config (Code attr code) = RawInline "tex" $ ("|" ++ escapeCodeInline config code ++ "|")
+transformInline config (Math t m) = Math t (escapeBar m)
+transformInline config (RawInline "tex" text) = RawInline "tex" $ unescapeComments $ text
+transformInline config (RawInline "latex" text) = RawInline "latex" $ unescapeComments $ text
+transformInline config (RawInline format text) = error $ "raw " ++ format ++ " not supported by pandoc-lit (" ++ text ++ ")"
+transformInline config (Link text (s1, s2)) = Link text (escapeBar s1, escapeBar s2)
+transformInline config x = x
 
 transformFloats :: [Block] -> [Block]
 transformFloats = begin where
@@ -162,8 +166,9 @@ transformFloats = begin where
   caption env tag (block : rest)
     =  block : caption env tag rest
 
-escapeCodeInline = escapeBar . escapeTH
-escapeCodeBlock = escapeInComments . escapeTH
+escapeCodeInline config
+  | th config = escapeBar . escapeTH
+  | otherwise = escapeBar
 
 escapeInComments :: String -> String
 escapeInComments = code where
@@ -227,9 +232,9 @@ transformDoc config
     .  maybe id (bottomUp . concatMap . transformAbstract)   (abstract config)
     .  maybe id (bottomUp . transformToc)                    (toc config)
     )
-  . bottomUp (concatMap (transformBlock config))
-  . bottomUp transformInline
-  . onBlocks transformFloats 
+  . bottomUp (transformBlock config)
+  . bottomUp (transformInline config)
+  . if figures config then onBlocks transformFloats else id 
 
 onBlocks :: ([Block] -> [Block]) -> Pandoc -> Pandoc
 onBlocks f (Pandoc meta blocks) = Pandoc meta (f blocks)
@@ -241,7 +246,9 @@ parserState = defaultParserState
 
 readDoc :: Config -> String -> Pandoc
 readDoc config = readMarkdown 
-  parserState { stateCitations = map refId (references config) }
+  parserState { stateCitations = case references config of
+                                   Just refs  ->  map refId refs
+                                   Nothing    ->  [] }
 
 writeDoc :: Config -> Pandoc -> String
 writeDoc config = writeLaTeX options where
@@ -329,8 +336,10 @@ data Config
      , titlePage         ::  Maybe String
      , notes             ::  Bool
      , pause             ::  Bool
+     , th                ::  Bool
+     , figures           ::  Bool
      , bibliography      ::  Maybe String
-     , references        ::  [Reference]
+     , references        ::  Maybe [Reference]
      , csl               ::  Maybe String
      }
   deriving Show
@@ -351,8 +360,10 @@ defaultConfig
      , titlePage         =  Nothing
      , notes             =  False
      , pause             =  False
+     , th                =  False
+     , figures           =  False
      , bibliography      =  Nothing
-     , references        =  []
+     , references        =  Nothing
      , csl               =  Nothing
      }
 
@@ -391,6 +402,12 @@ optNotes       =  Option  ""   ["notes"]       (NoArg processNotes)
 
 optPause       =  Option  ""   ["pause"]       (NoArg processPause)
                           "convert horizontal rules into beamer pauses"
+
+optTH          =  Option  ""   ["escape-template-haskell"] (NoArg processTH)
+                          "escape Template Haskell splices, quotes and names"
+
+optFigures     =  Option  ""   ["figures"]       (NoArg processFigures)
+                          "enable support for floating figures"
 
 optTemplate    =  Option  ""   ["template"]    (ReqArg processTemplate "FILE")
                           "produce standalone output and use FILE as template"
@@ -450,6 +467,16 @@ processNotes x
 processPause (Transform (config))
   =  Transform (config {pause = True})
 processPause x
+  =  x
+
+processTH (Transform (config))
+  =  Transform (config {th = True})
+processTH x
+  =  x
+
+processFigures (Transform (config))
+  =  Transform (config {figures = True})
+processFigures x
   =  x
 
 processEval dir (Transform config)
@@ -520,6 +547,8 @@ options
     , optTitlePage
     , optNotes
     , optPause
+    , optTH
+    , optFigures
     , optBibliography
     , optCSL
     ]
@@ -583,7 +612,9 @@ transform config = do
   mapM_ (\x -> putStrLn ("%include " ++ x)) (includes config')
 
   -- read bibliography
-  refs  <-  maybe (return []) readBiblioFile (bibliography config)
+  refs  <-  case bibliography config of
+              Just bib  ->  liftM Just (readBiblioFile bib)
+              Nothing   ->  return Nothing
   let config'' = config' {references = refs}
   
   mapM_ (transformFile config'') (files config'')
@@ -608,7 +639,9 @@ transformFile config file = do
   
   let doc    =   readDoc config text'''
   let doc'   =   transformDoc config doc
-  doc''      <-  processBiblio cslfile (references config) doc'
+  doc''      <-  case references config of
+                   Just refs  ->  processBiblio cslfile refs doc'
+                   Nothing    ->  return doc'
   putStrLn . avoidUTF8 . writeDoc config $ doc'' 
 
 avoidUTF8 :: String -> String
