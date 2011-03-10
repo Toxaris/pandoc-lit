@@ -15,12 +15,10 @@ import Control.Monad (liftM, ap)
 import System.Environment (getArgs)
 import System.Console.GetOpt
 import System.Exit (exitFailure, exitSuccess)
-import System.IO (stdout, stderr, hPutStrLn)
+import System.IO (stdout, stderr, hPutStrLn, openFile, IOMode(ReadMode), hSetEncoding, utf8, hSetNewlineMode, universalNewlineMode, hGetContents)
 import System.Directory (getCurrentDirectory, doesFileExist, getAppUserDataDirectory)
 import System.FilePath (pathSeparator, (</>), (<.>))
 import System.Process (readProcess)
-
-import qualified System.IO.UTF8 as UTF8
 
 import Data.List (intersperse, stripPrefix)
 import Data.Data (Data, Typeable)
@@ -310,7 +308,7 @@ includeIncludes config = fmap unlines . mapM go . lines where
       let filename = dropWhile isSpace rest
       exist <- doesFileExist filename
       if exist
-        then do text <- UTF8.readFile filename
+        then do text <- readFileUTF8 filename
                 text' <- transformEval config filename text
                 includeIncludes config text'
         else do
@@ -584,9 +582,9 @@ readDefaultTemplate
 readDataFile :: FilePath -> IO String
 readDataFile fname
   = do u <- getAppUserDataDirectory "pandoc"
-       (UTF8.readFile $ u </> fname)
-         `catch` (\_ -> getDataFileName fname >>= UTF8.readFile)
-  `catch` (\_ -> getDataFileName fname >>= UTF8.readFile)
+       (readFileUTF8 $ u </> fname)
+         `catch` (\_ -> getDataFileName fname >>= readFileUTF8)
+  `catch` (\_ -> getDataFileName fname >>= readFileUTF8)
 
 readTemplate :: Config -> IO (Maybe String)
 readTemplate config = do
@@ -619,8 +617,16 @@ transform config = do
   
   mapM_ (transformFile config'') (files config'')
 
+-- A variant of readFile forcing UTF8 encoding and accepting any newline style. 
+readFileUTF8 :: FilePath -> IO String
+readFileUTF8 name = do
+  handle <- openFile name ReadMode
+  hSetEncoding handle utf8
+  hSetNewlineMode handle universalNewlineMode
+  hGetContents handle
+
 readFileOrGetContents "-" = getContents
-readFileOrGetContents file = UTF8.readFile file
+readFileOrGetContents file = readFileUTF8 file
 
 transformFile :: Config -> FilePath -> IO ()
 transformFile config file = do

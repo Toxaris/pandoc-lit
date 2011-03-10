@@ -42,8 +42,7 @@ Extra-Source-Files: README
 Executable pandoc-lit
   Hs-Source-Dirs:     src
   Main-Is:            pandoc-lit.hs
-  Build-Depends:      utf8-string, 
-                      base == 4.*, 
+  Build-Depends:      base == 4.*, 
                       pandoc == 1.8.*,
                       pandoc-scripting == 0.1,
                       pandoc-types == 1.8.*,
