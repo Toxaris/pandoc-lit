@@ -654,7 +654,17 @@ avoidUTF8 :: String -> String
 avoidUTF8 = concatMap f where
   f c  =  if c <= toEnum 128
             then [c]
-            else "{\\char" ++ show (fromEnum c) ++ "}"
+            else encodeCharForLatex c
+
+encodeCharForLatex c = case fromEnum c of
+  0x00E4  ->  "\\\"a"
+  0x00F6  ->  "\\\"o"
+  0x00FC  ->  "\\\"u"
+  0x00C4  ->  "\\\"A"
+  0x00D6  ->  "\\\"O"
+  0x00DC  ->  "\\\"U"
+  0x03BB  ->  "\\ensuremath{\\lambda}"
+  code    ->  "{\\char" ++ show code ++ "}"
 
 transformEval :: Config -> FilePath -> String -> IO String
 transformEval Config {eval = Just dir} path text = result where
