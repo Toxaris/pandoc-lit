@@ -143,9 +143,13 @@ transformFloats :: [Block] -> [Block]
 transformFloats = begin where
   begin (Para [RawInline "tex" "\\figure", Space, Str tag] : rest)
     =  Plain [RawInline "tex" "\\begin{figure}"]
+    :  Plain [RawInline "tex" "\\begin{minipage}{\\textwidth}"]
+    :  Plain [RawInline "tex" "\\renewcommand{\\footnoterule}{}"]
     :  caption "figure" tag rest
   begin (Para [RawInline "tex" "\\figure*", Space, Str tag] : rest)
     =  Plain [RawInline "tex" "\\begin{figure*}"]
+    :  Plain [RawInline "tex" "\\begin{minipage}{\\textwidth}"]
+    :  Plain [RawInline "tex" "\\renewcommand{\\footnoterule}{}"]
     :  caption "figure*" tag rest
   begin (block : rest)
     =  block : begin rest
@@ -153,7 +157,8 @@ transformFloats = begin where
     =  []
   
   caption env tag (Para (RawInline "tex" "\\caption" : text) : rest)
-    =  Plain  (concat
+    =  Plain  [RawInline "tex" $ "\\end{minipage}"]
+    :  Plain  (concat
                 [  [RawInline "tex" $ "\\caption{"]
                 ,  text
                 ,  [RawInline "tex" $ "}"]])
