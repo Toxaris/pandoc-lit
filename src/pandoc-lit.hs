@@ -658,9 +658,13 @@ avoidUTF8 = concatMap f where
 
 encodeCharForLatex c = case fromEnum c of
   0x00E4  ->  "\\\"a"
+  0x00EB  ->  "\\\"e"
+  0x00EF  ->  "\\\"i"
   0x00F6  ->  "\\\"o"
   0x00FC  ->  "\\\"u"
   0x00C4  ->  "\\\"A"
+  0x00CB  ->  "\\\"E"
+  0x00CF  ->  "\\\"I"
   0x00D6  ->  "\\\"O"
   0x00DC  ->  "\\\"U"
   0x03BB  ->  "\\ensuremath{\\lambda}"
