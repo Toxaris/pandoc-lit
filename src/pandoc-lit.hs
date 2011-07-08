@@ -344,6 +344,7 @@ data Config
      , bibliography      ::  Maybe String
      , references        ::  Maybe [Reference]
      , csl               ::  Maybe String
+     , includeInHeader   ::  [FilePath]
      }
   deriving Show
 
@@ -368,6 +369,7 @@ defaultConfig
      , bibliography      =  Nothing
      , references        =  Nothing
      , csl               =  Nothing
+     , includeInHeader   =  []
      }
 
 data Command
@@ -377,6 +379,10 @@ data Command
 
 optInclude     =  Option  ""   ["include"]     (ReqArg processInclude "FILE")
                           "emit a lhs2tex \"%include FILE\" directive"
+
+optIncludeInHeader 
+               =  Option  "H"  ["include-in-header"]     (ReqArg processIncludeInHeader "FILE")
+                          "include the contents of FILE into the LaTeX header"
 
 optProcessIncludes
                = Option   ""   ["process-includes"] (NoArg processProcessIncludes)
@@ -534,6 +540,11 @@ processCSL filename (Transform config)
 processCSL filename x
   = x
 
+processIncludeInHeader file (Transform (config@Config {includeInHeader = old}))
+  =  Transform (config {includeInHeader = old ++ [file]})
+processIncludeInHeader file x
+  =  x
+
 options
   = [ optInclude
     , optHelp
@@ -554,6 +565,7 @@ options
     , optFigures
     , optBibliography
     , optCSL
+    , optIncludeInHeader
     ]
 
 -- main program
@@ -653,7 +665,11 @@ transformFile config file = do
   doc''      <-  case references config of
                    Just refs  ->  processBiblio cslfile refs doc'
                    Nothing    ->  return doc'
-  putStrLn . avoidUTF8 . writeDoc config $ doc'' 
+                   
+  headerIncludes <- mapM readFile (includeInHeader config)
+  let config' = config {variables = variables config ++ map ((,) "header-includes") headerIncludes} 
+  
+  putStrLn . avoidUTF8 . writeDoc config' $ doc'' 
 
 avoidUTF8 :: String -> String
 avoidUTF8 = concatMap f where
