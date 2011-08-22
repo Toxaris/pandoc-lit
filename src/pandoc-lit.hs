@@ -345,6 +345,7 @@ data Config
      , references        ::  Maybe [Reference]
      , csl               ::  Maybe String
      , includeInHeader   ::  [FilePath]
+     , includeBeforeBody ::  [FilePath]
      }
   deriving Show
 
@@ -370,6 +371,7 @@ defaultConfig
      , references        =  Nothing
      , csl               =  Nothing
      , includeInHeader   =  []
+     , includeBeforeBody =  []
      }
 
 data Command
@@ -383,6 +385,10 @@ optInclude     =  Option  ""   ["include"]     (ReqArg processInclude "FILE")
 optIncludeInHeader 
                =  Option  "H"  ["include-in-header"]     (ReqArg processIncludeInHeader "FILE")
                           "include the contents of FILE into the LaTeX header"
+
+optIncludeBeforeBody 
+               =  Option  "B"  ["include-before-body"]     (ReqArg processIncludeBeforeBody "FILE")
+                          "include the contents of FILE at the beginning of the document body"
 
 optProcessIncludes
                = Option   ""   ["process-includes"] (NoArg processProcessIncludes)
@@ -545,6 +551,11 @@ processIncludeInHeader file (Transform (config@Config {includeInHeader = old}))
 processIncludeInHeader file x
   =  x
 
+processIncludeBeforeBody file (Transform (config@Config {includeBeforeBody = old}))
+  =  Transform (config {includeBeforeBody = old ++ [file]})
+processIncludeBeforeBody file x
+  =  x
+
 options
   = [ optInclude
     , optHelp
@@ -667,7 +678,10 @@ transformFile config file = do
                    Nothing    ->  return doc'
                    
   headerIncludes <- mapM readFile (includeInHeader config)
-  let config' = config {variables = variables config ++ map ((,) "header-includes") headerIncludes} 
+  includeBefore <- mapM readFile (includeBeforeBody config)
+  let config' = config {variables = variables config ++ 
+                        map ((,) "header-includes") headerIncludes ++
+                        map ((,) "include-before") includeBefore}
   
   putStrLn . avoidUTF8 . writeDoc config' $ doc'' 
 
