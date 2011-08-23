@@ -131,7 +131,11 @@ escapeCodeBlock config
 
 transformInline :: Config -> Inline -> Inline
 transformInline config (Str text) = Str (escapeBar text)
-transformInline config (Code attr code) = RawInline "tex" $ ("|" ++ escapeCodeInline config code ++ "|")
+transformInline config (Code attr code)
+  |  hyperref config
+  =  RawInline "tex" ("\\texorpdfstring{|" ++ escapeCodeInline config code ++ "|}{" ++ escapeCodePDF config code ++ "}")
+  |  otherwise
+  =  RawInline "tex" ("|" ++ escapeCodeInline config code ++ "|")
 transformInline config (Math t m) = Math t (escapeBar m)
 transformInline config (RawInline "tex" text) = RawInline "tex" $ unescapeComments $ text
 transformInline config (RawInline "latex" text) = RawInline "latex" $ unescapeComments $ text
@@ -168,6 +172,15 @@ transformFloats = begin where
   
   caption env tag (block : rest)
     =  block : caption env tag rest
+
+escapeCodePDF config
+  | otherwise = escapeBar . escapePDF 
+
+escapePDF :: String -> String
+escapePDF ('_' : rest) = '\\' : '_' : escapePDF rest
+escapePDF ('$' : rest) = '\\' : '$' : escapePDF rest
+escapePDF (c : rest) = c : escapePDF rest
+escapePDF [] = []
 
 escapeCodeInline config
   | th config = escapeBar . escapeTH
@@ -346,6 +359,7 @@ data Config
      , csl               ::  Maybe String
      , includeInHeader   ::  [FilePath]
      , includeBeforeBody ::  [FilePath]
+     , hyperref          ::  Bool
      }
   deriving Show
 
@@ -372,6 +386,7 @@ defaultConfig
      , csl               =  Nothing
      , includeInHeader   =  []
      , includeBeforeBody =  []
+     , hyperref          =  False
      }
 
 data Command
@@ -450,6 +465,9 @@ optBibliography=  Option  ""   ["bibliography"](ReqArg processBibliography "BIB"
 
 optCSL         =  Option  ""   ["csl"](ReqArg processCSL "CSL")
                           "use style sheet CSL for references"
+
+optHyperref    = Option   ""   ["hyperref"] (NoArg processHyperref)
+                          "better support hyperref package"
 
 processVariable arg (Transform (config@Config {variables = old}))
   = case break (`elem` ":=") arg of
@@ -556,6 +574,11 @@ processIncludeBeforeBody file (Transform (config@Config {includeBeforeBody = old
 processIncludeBeforeBody file x
   =  x
 
+processHyperref (Transform config)
+  = Transform (config {hyperref = True})
+processHyperref x
+  = x
+
 options
   = [ optInclude
     , optHelp
@@ -577,6 +600,7 @@ options
     , optBibliography
     , optCSL
     , optIncludeInHeader
+    , optHyperref
     ]
 
 -- main program
