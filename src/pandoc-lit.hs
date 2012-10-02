@@ -698,7 +698,7 @@ transformFile config file = do
   let doc    =   readDoc config text'''
   let doc'   =   transformDoc config doc
   doc''      <-  case references config of
-                   Just refs  ->  processBiblio cslfile refs doc'
+                   Just refs  ->  processBiblio cslfile Nothing refs doc'
                    Nothing    ->  return doc'
                    
   headerIncludes <- mapM readFile (includeInHeader config)

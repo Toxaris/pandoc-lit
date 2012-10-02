@@ -1,5 +1,5 @@
 Name:            pandoc-lit
-Version:         0.2
+Version:         0.3
 Synopsis:        Literate programming with pandoc and lhs2tex
 Description:     pandoc-lit supports literate programming by
                  combining two excellent tools: pandoc for text
@@ -43,9 +43,9 @@ Executable pandoc-lit
   Hs-Source-Dirs:     src
   Main-Is:            pandoc-lit.hs
   Build-Depends:      base == 4.*, 
-                      pandoc == 1.8.*,
+                      pandoc == 1.9.*,
                       pandoc-scripting == 0.1,
-                      pandoc-types == 1.8.*,
+                      pandoc-types == 1.9.*,
                       citeproc-hs >= 0.3.1 && < 0.4,
                       regexpr, 
                       directory, 
