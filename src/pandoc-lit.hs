@@ -7,7 +7,7 @@ module Main where
 
 import Text.Pandoc hiding (processWith)
 import Text.Pandoc.Biblio (processBiblio)
-import Text.Pandoc.Shared (findDataFile)
+import Text.Pandoc.Shared (findDataFile, CiteMethod (Citeproc, Natbib, Biblatex))
 
 import Text.CSL (readBiblioFile, refId, Reference)
 import Control.Monad (liftM, ap)
@@ -145,7 +145,7 @@ transformInline config x = x
 
 transformFloats :: [Block] -> [Block]
 transformFloats = begin where
-  begin (Para [RawInline "tex" "\\figure", Space, Str tag] : rest)
+  begin (Para [RawInline "tex" "\\figure ", Str tag] : rest)
     =  Plain [RawInline "tex" "\\begin{figure}"]
     :  Plain [RawInline "tex" "\\begin{minipage}{\\linewidth}"]
     :  Plain [RawInline "tex" "\\renewcommand{\\footnoterule}{}"]
@@ -160,7 +160,7 @@ transformFloats = begin where
   begin []
     =  []
   
-  caption env tag (Para (RawInline "tex" "\\caption" : text) : rest)
+  caption env tag (Para (RawInline "tex" "\\caption " : text) : rest)
     =  Plain  [RawInline "tex" $ "\\end{minipage}"]
     :  Plain  (concat
                 [  [RawInline "tex" $ "\\caption{"]
@@ -172,6 +172,9 @@ transformFloats = begin where
   
   caption env tag (block : rest)
     =  block : caption env tag rest
+
+  caption env tag []
+    =  error ("Missing \\caption for \\" ++ env ++ " " ++ tag)
 
 escapeCodePDF config
   | otherwise = escapeBar . escapePDF 
@@ -275,6 +278,7 @@ writeDoc config = writeLaTeX options where
       , writerVariables = variables config
       , writerNumberSections = True
       , writerBiblioFiles = maybeToList (bibliography config)
+      , writerCiteMethod = citeMethod config
       }
 
 -- escaping of TeX comments
@@ -357,6 +361,7 @@ data Config
      , bibliography      ::  Maybe String
      , references        ::  Maybe [Reference]
      , csl               ::  Maybe String
+     , citeMethod        ::  CiteMethod
      , includeInHeader   ::  [FilePath]
      , includeBeforeBody ::  [FilePath]
      , hyperref          ::  Bool
@@ -384,6 +389,7 @@ defaultConfig
      , bibliography      =  Nothing
      , references        =  Nothing
      , csl               =  Nothing
+     , citeMethod        =  Citeproc
      , includeInHeader   =  []
      , includeBeforeBody =  []
      , hyperref          =  False
@@ -465,6 +471,12 @@ optBibliography=  Option  ""   ["bibliography"](ReqArg processBibliography "BIB"
 
 optCSL         =  Option  ""   ["csl"](ReqArg processCSL "CSL")
                           "use style sheet CSL for references"
+
+optNatbib      =  Option  ""   ["natbib"]      (NoArg processNatbib)
+                          "use natbib for references"
+
+optBiblatex    =  Option  ""   ["biblatex"]    (NoArg processBiblatex)
+                          "use biblatex for references"
 
 optHyperref    = Option   ""   ["hyperref"] (NoArg processHyperref)
                           "better support hyperref package"
@@ -560,8 +572,19 @@ processBibliography bib x
   = x
 
 processCSL filename (Transform config)
-  = Transform (config {csl = Just filename})
+  = Transform (config {csl = Just filename,
+                       citeMethod = Citeproc})
 processCSL filename x
+  = x
+
+processNatbib (Transform config)
+  = Transform (config {citeMethod = Natbib})
+processNatbib x
+  = x
+
+processBiblatex (Transform config)
+  = Transform (config {citeMethod = Biblatex})
+processBiblatex x
   = x
 
 processIncludeInHeader file (Transform (config@Config {includeInHeader = old}))
@@ -599,6 +622,8 @@ options
     , optFigures
     , optBibliography
     , optCSL
+    , optNatbib
+    , optBiblatex
     , optIncludeInHeader
     , optHyperref
     ]
@@ -698,8 +723,9 @@ transformFile config file = do
   let doc    =   readDoc config text'''
   let doc'   =   transformDoc config doc
   doc''      <-  case references config of
-                   Just refs  ->  processBiblio cslfile Nothing refs doc'
-                   Nothing    ->  return doc'
+                   Just refs | citeMethod config == Citeproc
+                              ->  processBiblio cslfile Nothing refs doc'
+                   _          ->  return doc'
                    
   headerIncludes <- mapM readFile (includeInHeader config)
   includeBefore <- mapM readFile (includeBeforeBody config)
