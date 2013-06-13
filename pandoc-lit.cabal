@@ -36,12 +36,13 @@ Author:          Tillmann Rendel
 Maintainer:      Tillmann Rendel <rendel@informatik.uni-marburg.de>
 Category:        Development
 Build-Type:      Simple
-Cabal-Version:   >= 1.6
+Cabal-Version:   >= 1.8
 Extra-Source-Files: README
 
-Executable pandoc-lit
+Library
   Hs-Source-Dirs:     src
-  Main-Is:            pandoc-lit.hs
+  Exposed-Modules:    Text.Pandoc.Lit
+  Other-Modules:      Paths_pandoc_lit
   Build-Depends:      base == 4.*, 
                       pandoc == 1.9.*,
                       pandoc-scripting == 0.1,
@@ -51,3 +52,8 @@ Executable pandoc-lit
                       directory, 
                       filepath, 
                       process
+
+Executable pandoc-lit
+  Main-Is:            pandoc-lit.hs
+  Build-Depends:      base,
+                      pandoc-lit
