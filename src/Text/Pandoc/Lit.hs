@@ -224,10 +224,22 @@ escapeInComments = code where
   texEscape (c : text ) = c : texEscape text
 
 escapeBar :: String -> String
-escapeBar = latex where
+escapeBar = latexBOL where
+  latexBOL []                      =  []
+  latexBOL ('|' : text)            =  '|' : '|' : escapeBar text
+  latexBOL ('\n' : text)           =  '\n' : latexBOL text
+  latexBOL ('>' : text)            =  '>' : code text
+  latexBOL ('<' : text)            =  '<' : code text
+  latexBOL (c : text)              =  c : latex text
+
   latex []                         =  []
   latex ('|' : text)               =  '|' : '|' : escapeBar text
+  latex ('\n' : text)              =  '\n' : latexBOL text
   latex (c : text)                 =  c : escapeBar text
+
+  code []                          =  []
+  code ('\n' : text)               =  '\n' : latexBOL text
+  code (c : text)                  =  c : code text
 
 escapeTH :: String -> String
 escapeTH
