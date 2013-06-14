@@ -224,7 +224,10 @@ escapeInComments = code where
   texEscape (c : text ) = c : texEscape text
 
 escapeBar :: String -> String
-escapeBar = gsubRegexPR "\\|" "\\|\\|"
+escapeBar = latex where
+  latex []                         =  []
+  latex ('|' : text)               =  '|' : '|' : escapeBar text
+  latex (c : text)                 =  c : escapeBar text
 
 escapeTH :: String -> String
 escapeTH
