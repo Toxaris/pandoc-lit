@@ -42,10 +42,10 @@ Extra-Source-Files: README
 Library
   Hs-Source-Dirs:     src
   Exposed-Modules:    Text.Pandoc.Lit
+                      Text.Pandoc.Scripting.Structure
   Other-Modules:      Paths_pandoc_lit
   Build-Depends:      base == 4.*, 
                       pandoc == 1.9.*,
-                      pandoc-scripting == 0.1,
                       pandoc-types == 1.9.*,
                       citeproc-hs >= 0.3.1 && < 0.4,
                       regexpr, 
