@@ -18,7 +18,7 @@ Description:     pandoc-lit supports literate programming by
                  essentially requires some amount of hacking on
                  it.
                  .
-                 At the Haskell Implementor's Workshop 2010, I 
+                 At the Haskell Implementor's Workshop 2010, I
                  gave a lightning talk about pandoc-lit, which
                  has been videotaped and is available on the web.
                  .
@@ -44,13 +44,13 @@ Library
   Exposed-Modules:    Text.Pandoc.Lit
                       Text.Pandoc.Scripting.Structure
   Other-Modules:      Paths_pandoc_lit
-  Build-Depends:      base == 4.*, 
+  Build-Depends:      base == 4.*,
                       pandoc == 1.9.*,
                       pandoc-types == 1.9.*,
                       citeproc-hs >= 0.3.1 && < 0.4,
-                      regexpr, 
-                      directory, 
-                      filepath, 
+                      regexpr,
+                      directory,
+                      filepath,
                       process
 
 Executable pandoc-lit

@@ -4,27 +4,27 @@
 
 {-# LANGUAGE PatternGuards, DeriveDataTypeable #-}
 
--- | This module provides a structured view on pandoc documents 
---   as trees, with section headers as inner nodes and blocks as 
---   leafs. 
+-- | This module provides a structured view on pandoc documents
+--   as trees, with section headers as inner nodes and blocks as
+--   leafs.
 
 module Text.Pandoc.Scripting.Structure
-  ( 
+  (
   -- * Example
-  
+
   -- $example
-  
+
   -- * A structured view on Pandoc documents
-  
+
     Structure (..)
-    
+
   -- * Converting from and to the structured view
-  
+
   , toStructure
   , fromStructure
-  
+
   -- * Convenience functions
-  
+
   , onStructure
   ) where
 
@@ -39,9 +39,9 @@ import Text.Pandoc.Definition (Pandoc (Pandoc), Block (Header), Inline ())
 -- on the input. For example, some document classes for LaTeX
 -- expect an abstract in an @abstract@ environment, but in
 -- markdown, it is more convenient to write the abstract in a
--- section called @Abstract@. The following script converts 
+-- section called @Abstract@. The following script converts
 -- the latter into the former:
--- 
+--
 -- > fromStructure . topDown (concatMap transform) . toStructure where
 -- >   transform :: Structure -> [Structure]
 -- >   transform (Section _ [Str "Abstract"] contents)

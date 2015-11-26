@@ -64,8 +64,8 @@ transformBeamer config (Section _ header contents)
 transformBeamer config (Section 2 header contents)
   |   Block HorizontalRule `elem` contents
   =   [Block $ Plain
-      $   [RawInline "tex" "\\begin{frame}{"] 
-      ++  header 
+      $   [RawInline "tex" "\\begin{frame}{"]
+      ++  header
       ++ [RawInline "tex" "}"]]
   ++  [Block $ RawBlock "tex" $ "\\begin{columns}[T]"]
   ++  [Block $ RawBlock "tex" $ "\\begin{column}{0.45\\textwidth}"]
@@ -81,8 +81,8 @@ transformBeamer config (Section 2 header contents)
 
 transformBeamer config (Section 2 header contents)
   =   [Block $ Plain
-      $   [RawInline "tex" "\\begin{frame}{"] 
-      ++  header 
+      $   [RawInline "tex" "\\begin{frame}{"]
+      ++  header
       ++  [RawInline "tex" "}"]]
   ++  transformFrameBlocks config 1 contents
   ++  [Block $ RawBlock "tex" $ "\\end{frame}"]
@@ -159,7 +159,7 @@ transformFloats = begin where
     =  block : begin rest
   begin []
     =  []
-  
+
   caption env tag (Para (RawInline "tex" "\\caption " : text) : rest)
     =  Plain  [RawInline "tex" $ "\\end{minipage}"]
     :  Plain  (concat
@@ -169,7 +169,7 @@ transformFloats = begin where
     :  Plain  [RawInline "tex" $ "\\label{" ++ tag ++ "}"]
     :  Plain  [RawInline "tex" $ "\\end{" ++ env ++ "}"]
     :  begin rest
-  
+
   caption env tag (block : rest)
     =  block : caption env tag rest
 
@@ -177,7 +177,7 @@ transformFloats = begin where
     =  error ("Missing \\caption for \\" ++ env ++ " " ++ tag)
 
 escapeCodePDF config
-  | otherwise = escapeBar . escapePDF 
+  | otherwise = escapeBar . escapePDF
 
 escapePDF :: String -> String
 escapePDF ('_' : rest) = '\\' : '_' : escapePDF rest
@@ -268,7 +268,7 @@ transformDoc config
     )
   . bottomUp (transformBlock config)
   . bottomUp (transformInline config)
-  . if figures config then onBlocks transformFloats else id 
+  . if figures config then onBlocks transformFloats else id
 
 onBlocks :: ([Block] -> [Block]) -> Pandoc -> Pandoc
 onBlocks f (Pandoc meta blocks) = Pandoc meta (f blocks)
@@ -279,7 +279,7 @@ parserState = defaultParserState
   }
 
 readDoc :: Config -> String -> Pandoc
-readDoc config = readMarkdown 
+readDoc config = readMarkdown
   parserState { stateCitations = case references config of
                                    Just refs  ->  map refId refs
                                    Nothing    ->  [] }
@@ -333,7 +333,7 @@ handleFigures "%figure"
 handleFigures "%caption"
   =  "\\caption{"
 handleFigures text | Just text' <- stripPrefix "%endfigure " text
-  =  "}\\label{" ++ takeWhile (/= '\n') text' ++ "}\\end{figure*}" 
+  =  "}\\label{" ++ takeWhile (/= '\n') text' ++ "}\\end{figure*}"
 handleFigures text
   = text
 
@@ -350,7 +350,7 @@ includeIncludes config = fmap unlines . mapM go . lines where
                 includeIncludes config text'
         else do
           return line
-          
+
   go line = do
     return line
 
@@ -418,11 +418,11 @@ data Command
 optInclude     =  Option  ""   ["include"]     (ReqArg processInclude "FILE")
                           "emit a lhs2tex \"%include FILE\" directive"
 
-optIncludeInHeader 
+optIncludeInHeader
                =  Option  "H"  ["include-in-header"]     (ReqArg processIncludeInHeader "FILE")
                           "include the contents of FILE into the LaTeX header"
 
-optIncludeBeforeBody 
+optIncludeBeforeBody
                =  Option  "B"  ["include-before-body"]     (ReqArg processIncludeBeforeBody "FILE")
                           "include the contents of FILE at the beginning of the document body"
 
@@ -580,7 +580,7 @@ processProcessIncludes (Transform config)
   = Transform (config {processIncludes = True})
 processProcessIncludes x
   = x
-  
+
 processBibliography bib (Transform config)
   = Transform (config {bibliography = Just bib})
 processBibliography bib x
@@ -697,7 +697,7 @@ transform config = do
   -- read template
   templateText <- readTemplate config
   let config' = config {template = templateText}
-  
+
   -- output include directives
   mapM_ (\x -> putStrLn ("%include " ++ x)) (includes config')
 
@@ -706,10 +706,10 @@ transform config = do
               Just bib  ->  liftM Just (readBiblioFile bib)
               Nothing   ->  return Nothing
   let config'' = config' {references = refs}
-  
+
   mapM_ (transformFile config'') (files config'')
 
--- A variant of readFile forcing UTF8 encoding and accepting any newline style. 
+-- A variant of readFile forcing UTF8 encoding and accepting any newline style.
 readFileUTF8 :: FilePath -> IO String
 readFileUTF8 name = do
   handle <- openFile name ReadMode
@@ -724,31 +724,31 @@ transformFile :: Config -> FilePath -> IO ()
 transformFile config file = do
   text         <-  readFileOrGetContents file
   text'        <-  transformEval config file text
-  text''       <-  if processIncludes config 
-                     then includeIncludes config text' 
+  text''       <-  if processIncludes config
+                     then includeIncludes config text'
                      else return text'
   let text'''  =   if preserveComments config
-                     then escapeComments text'' 
+                     then escapeComments text''
                      else text''
 
   cslfile    <-  case csl config of
                    Just filename  ->  return filename
                    Nothing        ->  findDataFile Nothing "default.csl"
-  
+
   let doc    =   readDoc config text'''
   let doc'   =   transformDoc config doc
   doc''      <-  case references config of
                    Just refs | citeMethod config == Citeproc
                               ->  processBiblio cslfile Nothing refs doc'
                    _          ->  return doc'
-                   
+
   headerIncludes <- mapM readFile (includeInHeader config)
   includeBefore <- mapM readFile (includeBeforeBody config)
-  let config' = config {variables = variables config ++ 
+  let config' = config {variables = variables config ++
                         map ((,) "header-includes") headerIncludes ++
                         map ((,) "include-before") includeBefore}
-  
-  putStrLn . avoidUTF8 . writeDoc config' $ doc'' 
+
+  putStrLn . avoidUTF8 . writeDoc config' $ doc''
 
 avoidUTF8 :: String -> String
 avoidUTF8 = concatMap f where
@@ -764,7 +764,7 @@ encodeCharForLatex c = case fromEnum c of
   0x00C3  ->  "\\~{A}"
   0x00C4  ->  "\\\"{A}"
   0x00C5  ->  "\\r{A}"
-  0x00C6  ->  "\\AE " 
+  0x00C6  ->  "\\AE "
   0x00C7  ->  "\\c{C}"
   0x00C8  ->  "\\`{E}"
   0x00C9  ->  "\\'{E}"
@@ -774,7 +774,7 @@ encodeCharForLatex c = case fromEnum c of
   0x00CD  ->  "\\'{I}"
   0x00CE  ->  "\\^{I}"
   0x00CF  ->  "\\\"{I}"
-  
+
   -- 0x00D0  -> -- What is this?
   0x00D1  ->  "\\~{N}"
   0x00D2  ->  "\\`{O}"
@@ -791,14 +791,14 @@ encodeCharForLatex c = case fromEnum c of
   0x00DD  ->  "\\'{Y}"
   -- 0x00DE  ->  -- What is this?
   0x00DF  ->  "\\ss "
-  
+
   0x00E0  ->  "\\`{a}"
   0x00E1  ->  "\\'{a}"
   0x00E2  ->  "\\^{a}"
   0x00E3  ->  "\\~{a}"
   0x00E4  ->  "\\\"{a}"
   0x00E5  ->  "\\r{a}"
-  0x00E6  ->  "\\ae " 
+  0x00E6  ->  "\\ae "
   0x00E7  ->  "\\c{c}"
   0x00E8  ->  "\\`{e}"
   0x00E9  ->  "\\'{e}"
@@ -824,13 +824,13 @@ encodeCharForLatex c = case fromEnum c of
   0x00FD  ->  "\\'{y}"
   -- 0x00FE  ->  -- What is this?
   0x00FF  ->  "\\\"{y} "
-  
+
   -- GREEK
   0x03BB  ->  "\\ensuremath{\\lambda}"
-  
+
   -- GENERAL INTERPUNCTUATION
   0x2013  ->  "--"
-  
+
   -- all others
   code    ->  "{\\char" ++ show code ++ "}"
 
