@@ -227,22 +227,26 @@ escapeInComments = code where
   texEscape ('"' : '-' : '}' : text) = '"' : '-' : '}' : code text
   texEscape (c : text ) = c : texEscape text
 
-escapeBar :: String -> String
-escapeBar = latexBOL where
+escapeBarBOL :: String -> String
+escapeBarBOL = latexBOL where
   latexBOL []                      =  []
   latexBOL ('|' : text)            =  '|' : '|' : escapeBar text
   latexBOL ('\n' : text)           =  '\n' : latexBOL text
-  latexBOL ('>' : text)            =  '>' : code text
-  latexBOL ('<' : text)            =  '<' : code text
-  latexBOL (c : text)              =  c : latex text
+  latexBOL ('>' : text)            =  '>' : escapeCode text
+  latexBOL ('<' : text)            =  '<' : escapeCode text
+  latexBOL (c : text)              =  c : escapeBar text
 
+escapeBar :: String -> String
+escapeBar = latex where
   latex []                         =  []
   latex ('|' : text)               =  '|' : '|' : escapeBar text
-  latex ('\n' : text)              =  '\n' : latexBOL text
+  latex ('\n' : text)              =  '\n' : escapeBarBOL text
   latex (c : text)                 =  c : escapeBar text
 
+escapeCode :: String -> String
+escapeCode = code where
   code []                          =  []
-  code ('\n' : text)               =  '\n' : latexBOL text
+  code ('\n' : text)               =  '\n' : escapeBarBOL text
   code (c : text)                  =  c : code text
 
 escapeTH :: String -> String
@@ -256,10 +260,6 @@ escapeTH
 -- escape ('|' : rest) = '|' : '|' : escape rest
 -- escape (x : rest) = x : escape rest
 -- escape [] = []
-
-addIncludes :: Pandoc -> Pandoc
-addIncludes (Pandoc meta blocks)
-  = Pandoc meta (RawBlock (Format "tex") "%include polycode.fmt" : blocks)
 
 isText text inlines = inlines == (intersperse Space . map Str . words $ text)
 
@@ -279,7 +279,9 @@ onBlocks f (Pandoc meta blocks) = Pandoc meta (f blocks)
 
 parserState = def
   { readerExtensions = Ext_literate_haskell `Set.insert` readerExtensions def
+  , readerParseRaw = True
   , readerSmart = True
+  , readerApplyMacros = False
   }
 
 readDoc :: Config -> String -> Pandoc
