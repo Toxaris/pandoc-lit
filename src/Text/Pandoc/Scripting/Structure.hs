@@ -31,7 +31,7 @@ module Text.Pandoc.Scripting.Structure
 import Data.Typeable (Typeable ())
 import Data.Data (Data ())
 
-import Text.Pandoc.Definition (Pandoc (Pandoc), Block (Header), Inline ())
+import Text.Pandoc.Definition
 
 -- $example
 -- The structured view can be convenient for document
@@ -63,10 +63,10 @@ toStructure = fst . go 0
   where
   go outer [] = ([], [])
 
-  go outer rest@(Header inner _ : _) | inner <= outer
+  go outer rest@(Header inner _ _ : _) | inner <= outer
     =  ([], rest)
 
-  go outer (Header inner text : rest)
+  go outer (Header inner _ text : rest)
     =  (section : structure'', rest'')
     where (structure', rest') = go inner rest
           (structure'',  rest'') = go outer rest'
@@ -82,7 +82,7 @@ fromStructure :: Structure -> [Block]
 fromStructure (Block block)
   = [block]
 fromStructure (Section level header structure)
-  = Header level header : concatMap fromStructure structure
+  = Header level nullAttr header : concatMap fromStructure structure
 
 -- | Apply a structure transformer on a full Pandoc document.
 onStructure :: ([Structure] -> [Structure]) -> Pandoc -> Pandoc

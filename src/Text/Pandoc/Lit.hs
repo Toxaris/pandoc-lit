@@ -6,11 +6,15 @@
 module Text.Pandoc.Lit where
 
 import Text.Pandoc hiding (processWith)
-import Text.Pandoc.Biblio (processBiblio)
-import Text.Pandoc.Shared (findDataFile, CiteMethod (Citeproc, Natbib, Biblatex))
+import Text.Pandoc.Error
+import Text.CSL.Pandoc
+import Text.CSL hiding (abstract, bibliography, references, processBibliography)
 
 import Text.CSL (readBiblioFile, refId, Reference)
 import Control.Monad (liftM, ap)
+
+import qualified Data.Set as Set
+import System.IO.Error
 
 import System.Environment (getArgs)
 import System.Console.GetOpt
@@ -40,16 +44,16 @@ stripSuffix suffix = fmap reverse . stripPrefix (reverse suffix) . reverse
 transformAbstract :: String -> Structure -> [Structure]
 transformAbstract abstract (Section _ header contents)
   |   isText abstract header
-  =   [Block $ RawBlock "latex" "\\begin{abstract}"]
+  =   [Block $ RawBlock (Format "latex") "\\begin{abstract}"]
   ++  contents
-  ++  [Block $ RawBlock "latex" "\\end{abstract}"]
+  ++  [Block $ RawBlock (Format "latex") "\\end{abstract}"]
 transformAbstract abstract content
   = [content]
 
 transformToc :: String -> Structure -> Structure
 transformToc toc (Section _ header contents)
   |   isText toc header
-  =   Block $ RawBlock "tex" "\\clearpage\\tableofcontents\\clearpage"
+  =   Block $ RawBlock (Format "tex") "\\clearpage\\tableofcontents\\clearpage"
 transformToc toc content
   =   content
 
@@ -57,35 +61,35 @@ transformBeamer :: Config -> Structure -> [Structure]
 transformBeamer config (Section _ header contents)
   |   Just tp <- titlePage config
   ,   isText tp header
-  =   [Block $ RawBlock "tex" "\\begin{frame}\n\\titlepage"]
+  =   [Block $ RawBlock (Format "tex") "\\begin{frame}\n\\titlepage"]
   ++  transformFrameBlocks config 1 contents
-  ++  [Block $ RawBlock "tex" "\\end{frame}"]
+  ++  [Block $ RawBlock (Format "tex") "\\end{frame}"]
 
 transformBeamer config (Section 2 header contents)
   |   Block HorizontalRule `elem` contents
   =   [Block $ Plain
-      $   [RawInline "tex" "\\begin{frame}{"]
+      $   [RawInline (Format "tex") "\\begin{frame}{"]
       ++  header
-      ++ [RawInline "tex" "}"]]
-  ++  [Block $ RawBlock "tex" $ "\\begin{columns}[T]"]
-  ++  [Block $ RawBlock "tex" $ "\\begin{column}{0.45\\textwidth}"]
+      ++ [RawInline (Format "tex") "}"]]
+  ++  [Block $ RawBlock (Format "tex") $ "\\begin{columns}[T]"]
+  ++  [Block $ RawBlock (Format "tex") $ "\\begin{column}{0.45\\textwidth}"]
   ++  transformFrameBlocks config 1 leftStructures
-  ++  [Block $ RawBlock "tex" $ "\\end{column}"]
-  ++  [Block $ RawBlock "tex" $ "\\begin{column}{0.45\\textwidth}"]
+  ++  [Block $ RawBlock (Format "tex") $ "\\end{column}"]
+  ++  [Block $ RawBlock (Format "tex") $ "\\begin{column}{0.45\\textwidth}"]
   ++  transformFrameBlocks config 1 rightStructures
-  ++  [Block $ RawBlock "tex" $ "\\end{column}"]
-  ++  [Block $ RawBlock "tex" $ "\\end{columns}"]
-  ++  [Block $ RawBlock "tex" $ "\\end{frame}"] where
+  ++  [Block $ RawBlock (Format "tex") $ "\\end{column}"]
+  ++  [Block $ RawBlock (Format "tex") $ "\\end{columns}"]
+  ++  [Block $ RawBlock (Format "tex") $ "\\end{frame}"] where
     leftStructures   =  takeWhile (/= Block HorizontalRule) contents
     rightStructures  =  drop 1 $ dropWhile (/= Block HorizontalRule) contents
 
 transformBeamer config (Section 2 header contents)
   =   [Block $ Plain
-      $   [RawInline "tex" "\\begin{frame}{"]
+      $   [RawInline (Format "tex") "\\begin{frame}{"]
       ++  header
-      ++  [RawInline "tex" "}"]]
+      ++  [RawInline (Format "tex") "}"]]
   ++  transformFrameBlocks config 1 contents
-  ++  [Block $ RawBlock "tex" $ "\\end{frame}"]
+  ++  [Block $ RawBlock (Format "tex") $ "\\end{frame}"]
 
 transformBeamer _ content
   = [content]
@@ -93,14 +97,14 @@ transformBeamer _ content
 transformFrameBlocks :: Config -> Int -> [Structure] -> [Structure]
 transformFrameBlocks config i (Block HorizontalRule : rest)
   | pause config
-  =   [Block $ RawBlock "tex" $ "\\pause"]
+  =   [Block $ RawBlock (Format "tex") $ "\\pause"]
   ++  transformFrameBlocks config (succ i) rest
 
 transformFrameBlocks config i (Block (BlockQuote blocks) : rest)
   | notes config
-  =   [Block $ RawBlock "tex" $ "\\note<alert@@" ++ show i ++ ">{"]
+  =   [Block $ RawBlock (Format "tex") $ "\\note<alert@@" ++ show i ++ ">{"]
   ++  map Block blocks
-  ++  [Block $ RawBlock "tex" $ "}"]
+  ++  [Block $ RawBlock (Format "tex") $ "}"]
   ++  transformFrameBlocks config i rest
 
 transformFrameBlocks config i (content : rest)
@@ -113,14 +117,14 @@ transformFrameBlocks config i []
 transformBlock :: Config -> Block -> Block
 transformBlock config (CodeBlock (identifier, classes, attributes) code)
   |   "literate" `elem` classes
-  =   RawBlock "latex" $ "\\begin{code}\n" ++ escapeCodeBlock config code ++ "\n\\end{code}"
+  =   RawBlock (Format "latex") $ "\\begin{code}\n" ++ escapeCodeBlock config code ++ "\n\\end{code}"
   |   otherwise
-  =   RawBlock "latex" $ "\\begin{spec}\n" ++ escapeCodeBlock config code ++ "\n\\end{spec}"
-transformBlock _ (RawBlock "tex" text)
-  =   RawBlock "tex" (unescapeComments $ text)
-transformBlock _ (RawBlock "latex" text)
-  =   RawBlock "latex" (unescapeComments $ text)
-transformBlock _ (RawBlock format text)
+  =   RawBlock (Format "latex") $ "\\begin{spec}\n" ++ escapeCodeBlock config code ++ "\n\\end{spec}"
+transformBlock _ (RawBlock (Format "tex") text)
+  =   RawBlock (Format "tex") (unescapeComments $ text)
+transformBlock _ (RawBlock (Format "latex") text)
+  =   RawBlock (Format "latex") (unescapeComments $ text)
+transformBlock _ (RawBlock (Format format) text)
   =   error $ "raw " ++ format ++ " not supported by pandoc-lit"
 transformBlock _ x
   =   x
@@ -133,41 +137,41 @@ transformInline :: Config -> Inline -> Inline
 transformInline config (Str text) = Str (escapeBar text)
 transformInline config (Code attr code)
   |  hyperref config
-  =  RawInline "tex" ("\\texorpdfstring{|" ++ escapeCodeInline config code ++ "|}{" ++ escapeCodePDF config code ++ "}")
+  =  RawInline (Format "tex") ("\\texorpdfstring{|" ++ escapeCodeInline config code ++ "|}{" ++ escapeCodePDF config code ++ "}")
   |  otherwise
-  =  RawInline "tex" ("|" ++ escapeCodeInline config code ++ "|")
+  =  RawInline (Format "tex") ("|" ++ escapeCodeInline config code ++ "|")
 transformInline config (Math t m) = Math t (escapeBar m)
-transformInline config (RawInline "tex" text) = RawInline "tex" $ unescapeComments $ text
-transformInline config (RawInline "latex" text) = RawInline "latex" $ unescapeComments $ text
-transformInline config (RawInline format text) = error $ "raw " ++ format ++ " not supported by pandoc-lit (" ++ text ++ ")"
+transformInline config (RawInline (Format "tex") text) = RawInline (Format "tex") $ unescapeComments $ text
+transformInline config (RawInline (Format "latex") text) = RawInline (Format "latex") $ unescapeComments $ text
+transformInline config (RawInline (Format format) text) = error $ "raw " ++ format ++ " not supported by pandoc-lit (" ++ text ++ ")"
 transformInline config (Link text (s1, s2)) = Link text (escapeBar s1, escapeBar s2)
 transformInline config x = x
 
 transformFloats :: [Block] -> [Block]
 transformFloats = begin where
-  begin (Para [RawInline "tex" "\\figure ", Str tag] : rest)
-    =  Plain [RawInline "tex" "\\begin{figure}"]
-    :  Plain [RawInline "tex" "\\begin{minipage}{\\linewidth}"]
-    :  Plain [RawInline "tex" "\\renewcommand{\\footnoterule}{}"]
+  begin (Para [RawInline (Format "tex") "\\figure ", Str tag] : rest)
+    =  Plain [RawInline (Format "tex") "\\begin{figure}"]
+    :  Plain [RawInline (Format "tex") "\\begin{minipage}{\\linewidth}"]
+    :  Plain [RawInline (Format "tex") "\\renewcommand{\\footnoterule}{}"]
     :  caption "figure" tag rest
-  begin (Para [RawInline "tex" "\\figure*", Space, Str tag] : rest)
-    =  Plain [RawInline "tex" "\\begin{figure*}"]
-    :  Plain [RawInline "tex" "\\begin{minipage}{\\linewidth}"]
-    :  Plain [RawInline "tex" "\\renewcommand{\\footnoterule}{}"]
+  begin (Para [RawInline (Format "tex") "\\figure*", Space, Str tag] : rest)
+    =  Plain [RawInline (Format "tex") "\\begin{figure*}"]
+    :  Plain [RawInline (Format "tex") "\\begin{minipage}{\\linewidth}"]
+    :  Plain [RawInline (Format "tex") "\\renewcommand{\\footnoterule}{}"]
     :  caption "figure*" tag rest
   begin (block : rest)
     =  block : begin rest
   begin []
     =  []
 
-  caption env tag (Para (RawInline "tex" "\\caption " : text) : rest)
-    =  Plain  [RawInline "tex" $ "\\end{minipage}"]
+  caption env tag (Para (RawInline (Format "tex") "\\caption " : text) : rest)
+    =  Plain  [RawInline (Format "tex") $ "\\end{minipage}"]
     :  Plain  (concat
-                [  [RawInline "tex" $ "\\caption{"]
+                [  [RawInline (Format "tex") $ "\\caption{"]
                 ,  text
-                ,  [RawInline "tex" $ "}"]])
-    :  Plain  [RawInline "tex" $ "\\label{" ++ tag ++ "}"]
-    :  Plain  [RawInline "tex" $ "\\end{" ++ env ++ "}"]
+                ,  [RawInline (Format "tex") $ "}"]])
+    :  Plain  [RawInline (Format "tex") $ "\\label{" ++ tag ++ "}"]
+    :  Plain  [RawInline (Format "tex") $ "\\end{" ++ env ++ "}"]
     :  begin rest
 
   caption env tag (block : rest)
@@ -255,7 +259,7 @@ escapeTH
 
 addIncludes :: Pandoc -> Pandoc
 addIncludes (Pandoc meta blocks)
-  = Pandoc meta (RawBlock "tex" "%include polycode.fmt" : blocks)
+  = Pandoc meta (RawBlock (Format "tex") "%include polycode.fmt" : blocks)
 
 isText text inlines = inlines == (intersperse Space . map Str . words $ text)
 
@@ -273,26 +277,27 @@ transformDoc config
 onBlocks :: ([Block] -> [Block]) -> Pandoc -> Pandoc
 onBlocks f (Pandoc meta blocks) = Pandoc meta (f blocks)
 
-parserState = defaultParserState
-  { stateLiterateHaskell = True
-  , stateSmart = True
+parserState = def
+  { readerExtensions = Ext_literate_haskell `Set.insert` readerExtensions def
+  , readerSmart = True
   }
 
 readDoc :: Config -> String -> Pandoc
-readDoc config = readMarkdown
+readDoc config = handleError . readMarkdown parserState
+{-
   parserState { stateCitations = case references config of
                                    Just refs  ->  map refId refs
                                    Nothing    ->  [] }
+                                   -}
 
 writeDoc :: Config -> Pandoc -> String
 writeDoc config = writeLaTeX options where
   options
-    = defaultWriterOptions
+    = def
       { writerStandalone = maybe False (const True) (template config)
       , writerTemplate = fromMaybe "" (template config)
       , writerVariables = variables config
       , writerNumberSections = True
-      , writerBiblioFiles = maybeToList (bibliography config)
       , writerCiteMethod = citeMethod config
       }
 
@@ -675,8 +680,8 @@ readDataFile :: FilePath -> IO String
 readDataFile fname
   = do u <- getAppUserDataDirectory "pandoc"
        (readFileUTF8 $ u </> fname)
-         `catch` (\_ -> getDataFileName fname >>= readFileUTF8)
-  `catch` (\_ -> getDataFileName fname >>= readFileUTF8)
+         `catchIOError` (\_ -> getDataFileName fname >>= readFileUTF8)
+  `catchIOError` (\_ -> getDataFileName fname >>= readFileUTF8)
 
 readTemplate :: Config -> IO (Maybe String)
 readTemplate config = do
@@ -733,14 +738,15 @@ transformFile config file = do
 
   cslfile    <-  case csl config of
                    Just filename  ->  return filename
-                   Nothing        ->  findDataFile Nothing "default.csl"
+                   Nothing        ->  return "default.csl"
 
   let doc    =   readDoc config text'''
   let doc'   =   transformDoc config doc
-  doc''      <-  case references config of
+  cslstyle <- readCSLFile Nothing cslfile
+  let doc''  = case references config of
                    Just refs | citeMethod config == Citeproc
-                              ->  processBiblio cslfile Nothing refs doc'
-                   _          ->  return doc'
+                              ->  processCites cslstyle refs doc'
+                   _          ->  doc'
 
   headerIncludes <- mapM readFile (includeInHeader config)
   includeBefore <- mapM readFile (includeBeforeBody config)

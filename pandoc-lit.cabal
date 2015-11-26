@@ -45,9 +45,11 @@ Library
                       Text.Pandoc.Scripting.Structure
   Other-Modules:      Paths_pandoc_lit
   Build-Depends:      base == 4.*,
-                      pandoc == 1.9.*,
-                      pandoc-types == 1.9.*,
-                      citeproc-hs >= 0.3.1 && < 0.4,
+                      pandoc == 1.15.*,
+                      pandoc-types == 1.12.*,
+                      pandoc-citeproc,
+                      containers,
+--                      citeproc-hs >= 0.3.1,
                       regexpr,
                       directory,
                       filepath,
