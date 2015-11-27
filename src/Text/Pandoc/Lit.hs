@@ -19,13 +19,13 @@ import System.IO.Error
 import System.Environment (getArgs)
 import System.Console.GetOpt
 import System.Exit (exitFailure, exitSuccess)
-import System.IO (stdout, stderr, hPutStrLn, openFile, IOMode(ReadMode), hSetEncoding, utf8, hSetNewlineMode, universalNewlineMode, hGetContents)
+import System.IO (stderr, hPutStrLn, openFile, IOMode(ReadMode), hSetEncoding, utf8, hSetNewlineMode, universalNewlineMode, hGetContents)
 import System.Directory (doesFileExist, getAppUserDataDirectory)
 import System.FilePath ((</>), (<.>))
 import System.Process (readProcess)
 
 import Data.List (intersperse, stripPrefix)
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromMaybe, isJust)
 import Data.Char (isSpace)
 
 import Text.RegexPR
@@ -66,15 +66,15 @@ transformBeamer config (Section 2 header contents)
       $   [RawInline (Format "tex") "\\begin{frame}{"]
       ++  header
       ++ [RawInline (Format "tex") "}"]]
-  ++  [Block $ RawBlock (Format "tex") $ "\\begin{columns}[T]"]
-  ++  [Block $ RawBlock (Format "tex") $ "\\begin{column}{0.45\\textwidth}"]
+  ++  [Block $ RawBlock (Format "tex") "\\begin{columns}[T]"]
+  ++  [Block $ RawBlock (Format "tex") "\\begin{column}{0.45\\textwidth}"]
   ++  transformFrameBlocks config 1 leftStructures
-  ++  [Block $ RawBlock (Format "tex") $ "\\end{column}"]
-  ++  [Block $ RawBlock (Format "tex") $ "\\begin{column}{0.45\\textwidth}"]
+  ++  [Block $ RawBlock (Format "tex") "\\end{column}"]
+  ++  [Block $ RawBlock (Format "tex") "\\begin{column}{0.45\\textwidth}"]
   ++  transformFrameBlocks config 1 rightStructures
-  ++  [Block $ RawBlock (Format "tex") $ "\\end{column}"]
-  ++  [Block $ RawBlock (Format "tex") $ "\\end{columns}"]
-  ++  [Block $ RawBlock (Format "tex") $ "\\end{frame}"] where
+  ++  [Block $ RawBlock (Format "tex") "\\end{column}"]
+  ++  [Block $ RawBlock (Format "tex") "\\end{columns}"]
+  ++  [Block $ RawBlock (Format "tex") "\\end{frame}"] where
     leftStructures   =  takeWhile (/= Block HorizontalRule) contents
     rightStructures  =  drop 1 $ dropWhile (/= Block HorizontalRule) contents
 
@@ -84,7 +84,7 @@ transformBeamer config (Section 2 header contents)
       ++  header
       ++  [RawInline (Format "tex") "}"]]
   ++  transformFrameBlocks config 1 contents
-  ++  [Block $ RawBlock (Format "tex") $ "\\end{frame}"]
+  ++  [Block $ RawBlock (Format "tex") "\\end{frame}"]
 
 transformBeamer _ content
   = [content]
@@ -92,19 +92,17 @@ transformBeamer _ content
 transformFrameBlocks :: Config -> Int -> [Structure] -> [Structure]
 transformFrameBlocks config i (Block HorizontalRule : rest)
   | configPause config
-  =   [Block $ RawBlock (Format "tex") $ "\\pause"]
-  ++  transformFrameBlocks config (succ i) rest
+  =   (Block $ RawBlock (Format "tex") $ "\\pause") : transformFrameBlocks config (succ i) rest
 
 transformFrameBlocks config i (Block (BlockQuote blocks) : rest)
   | configNotes config
   =   [Block $ RawBlock (Format "tex") $ "\\note<alert@@" ++ show i ++ ">{"]
   ++  map Block blocks
-  ++  [Block $ RawBlock (Format "tex") $ "}"]
+  ++  [Block $ RawBlock (Format "tex") "}"]
   ++  transformFrameBlocks config i rest
 
 transformFrameBlocks config i (content : rest)
-  =   [content]
-  ++  transformFrameBlocks config i rest
+  =   content : transformFrameBlocks config i rest
 
 transformFrameBlocks _ _ []
   =   []
@@ -116,9 +114,9 @@ transformBlock config (CodeBlock (_identifier, classes, _attributes) code)
   |   otherwise
   =   RawBlock (Format "latex") $ "\\begin{spec}\n" ++ escapeCodeBlock config code ++ "\n\\end{spec}"
 transformBlock _ (RawBlock (Format "tex") text)
-  =   RawBlock (Format "tex") (unescapeComments $ text)
+  =   RawBlock (Format "tex") (unescapeComments text)
 transformBlock _ (RawBlock (Format "latex") text)
-  =   RawBlock (Format "latex") (unescapeComments $ text)
+  =   RawBlock (Format "latex") (unescapeComments text)
 transformBlock _ x
   =   x
 
@@ -135,8 +133,8 @@ transformInline config (Code _attr code)
   |  otherwise
   =  RawInline (Format "tex") ("|" ++ escapeCodeInline config code ++ "|")
 transformInline _config (Math t m) = Math t (escapeBar m)
-transformInline _config (RawInline (Format "tex") text) = RawInline (Format "tex") $ unescapeComments $ text
-transformInline _config (RawInline (Format "latex") text) = RawInline (Format "latex") $ unescapeComments $ text
+transformInline _config (RawInline (Format "tex") text) = RawInline (Format "tex") $ unescapeComments text
+transformInline _config (RawInline (Format "latex") text) = RawInline (Format "latex") $ unescapeComments text
 transformInline _config (RawInline (Format format) text) = error $ "raw " ++ format ++ " not supported by pandoc-lit (" ++ text ++ ")"
 transformInline _config (Link text (s1, s2)) = Link text (escapeBar s1, escapeBar s2)
 transformInline _config x = x
@@ -159,11 +157,11 @@ transformFloats = begin where
     =  []
 
   caption env tag (Para (RawInline (Format "tex") "\\caption " : text) : rest)
-    =  Plain  [RawInline (Format "tex") $ "\\end{minipage}"]
+    =  Plain  [RawInline (Format "tex") "\\end{minipage}"]
     :  Plain  (concat
-                [  [RawInline (Format "tex") $ "\\caption{"]
+                [  [RawInline (Format "tex") "\\caption{"]
                 ,  text
-                ,  [RawInline (Format "tex") $ "}"]])
+                ,  [RawInline (Format "tex") "}"]])
     :  Plain  [RawInline (Format "tex") $ "\\label{" ++ tag ++ "}"]
     :  Plain  [RawInline (Format "tex") $ "\\end{" ++ env ++ "}"]
     :  begin rest
@@ -263,8 +261,7 @@ isText text inlines = inlines == (intersperse Space . map Str . words $ text)
 transformDoc :: Config -> Pandoc -> Pandoc
 transformDoc config@Config{configBeamer, configToc, configFigures, configAbstract}
   = onStructure
-    (  if configBeamer then bottomUp (concatMap (transformBeamer config)) else id
-    .  maybe id (bottomUp . concatMap . transformAbstract)   configAbstract
+    (  if configBeamer then bottomUp (concatMap (transformBeamer config)) else maybe id (bottomUp . concatMap . transformAbstract)   configAbstract
     .  maybe id (bottomUp . transformToc)                    configToc
     )
   . bottomUp (transformBlock config)
@@ -294,8 +291,8 @@ writeDoc :: Config -> Pandoc -> String
 writeDoc Config{..} = writeLaTeX opts where
   opts
     = def
-      { writerStandalone = maybe False (const True) configTemplate
-      , writerTemplate = fromMaybe "" (configTemplate)
+      { writerStandalone = isJust configTemplate
+      , writerTemplate = fromMaybe "" configTemplate
       , writerVariables = configVariables
       , writerNumberSections = True
       , writerCiteMethod = configCiteMethod
@@ -346,17 +343,17 @@ handleFigures text
 includeIncludes :: Config -> String -> IO String
 includeIncludes config = fmap unlines . mapM go . lines where
   go line
-    | Just rest <- stripPrefix "%include " $ line = do
+    | Just rest <- stripPrefix "%include " line = do
       let filename = dropWhile isSpace rest
       exist <- doesFileExist filename
       if exist
         then do text <- readFileUTF8 filename
                 text' <- transformEval config filename text
                 includeIncludes config text'
-        else do
+        else
           return line
 
-  go line = do
+  go line =
     return line
 
 -- option processing
@@ -523,13 +520,13 @@ processFile _ x
   =  x
 
 processComments :: Command -> Command
-processComments (Transform (config))
+processComments (Transform config)
   =  Transform (config {configPreserveComments = True})
 processComments x
   =  x
 
 processNotes :: Command -> Command
-processNotes (Transform (config))
+processNotes (Transform config)
   =  Transform (config {configNotes = True})
 processNotes x
   =  x
@@ -541,13 +538,13 @@ processPause x
   =  x
 
 processTH :: Command -> Command
-processTH (Transform (config))
+processTH (Transform config)
   =  Transform (config {configTh = True})
 processTH x
   =  x
 
 processFigures :: Command -> Command
-processFigures (Transform (config))
+processFigures (Transform config)
   =  Transform (config {configFigures = True})
 processFigures x
   =  x
@@ -684,7 +681,7 @@ main = do
             exitFailure
 
 help :: IO ()
-help = hPutStrLn stdout (usageInfo usageHeader options)
+help = putStrLn (usageInfo usageHeader options)
 
 usage :: IO ()
 usage = do
@@ -698,12 +695,12 @@ readDefaultTemplate
 readDataFile :: FilePath -> IO String
 readDataFile fname
   = do u <- getAppUserDataDirectory "pandoc"
-       (readFileUTF8 $ u </> fname)
+       readFileUTF8 (u </> fname)
          `catchIOError` (\_ -> getDataFileName fname >>= readFileUTF8)
   `catchIOError` (\_ -> getDataFileName fname >>= readFileUTF8)
 
 readTemplate :: Config -> IO (Maybe String)
-readTemplate Config{..} = do
+readTemplate Config{..} =
   case configTemplate of
     Just filename
       -> return Just `ap` readFileOrGetContents filename
@@ -867,7 +864,7 @@ transformEval Config {configEval = Just dir} path text = result where
   result = process text (gmatchRegexPR "\\\\eval{([^\\}]*)}" text)
 
   process :: String -> [((String, (String, String)),[(Int, String)])] -> IO String
-  process post [] = do
+  process post [] =
     return post
 
   process _ (((_, (pre, post)), [(1, arg)]) : rest) = do
@@ -876,7 +873,7 @@ transformEval Config {configEval = Just dir} path text = result where
     return (pre ++ "`" ++ this ++ "`" ++ that)
   process _ _ = error "transformEval"
 
-  execute arg = do
+  execute arg =
     readProcess "ghci" ["-v0", "-i" ++ dir, path] arg
 
 transformEval _ _ text = return text
