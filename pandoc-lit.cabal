@@ -41,6 +41,7 @@ Extra-Source-Files: README
 
 Library
   Hs-Source-Dirs:     src
+  ghc-options: -Wall
   Exposed-Modules:    Text.Pandoc.Lit
                       Text.Pandoc.Scripting.Structure
   Other-Modules:      Paths_pandoc_lit
@@ -49,7 +50,6 @@ Library
                       pandoc-types == 1.12.*,
                       pandoc-citeproc,
                       containers,
---                      citeproc-hs >= 0.3.1,
                       regexpr,
                       directory,
                       filepath,

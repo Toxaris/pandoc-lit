@@ -2,15 +2,15 @@
 -- This code can be used under the terms of a 3-clause BSD license.
 -- See LICENSE for details.
 
-{-# LANGUAGE PatternGuards, DeriveDataTypeable #-}
-module Text.Pandoc.Lit where
+{-# LANGUAGE PatternGuards, NamedFieldPuns #-}
+{-# LANGUAGE RecordWildCards #-}
+module Text.Pandoc.Lit(main) where
 
-import Text.Pandoc hiding (processWith)
+import Text.Pandoc
 import Text.Pandoc.Error
 import Text.CSL.Pandoc
 import Text.CSL hiding (abstract, bibliography, references, processBibliography)
 
-import Text.CSL (readBiblioFile, refId, Reference)
 import Control.Monad (liftM, ap)
 
 import qualified Data.Set as Set
@@ -20,24 +20,19 @@ import System.Environment (getArgs)
 import System.Console.GetOpt
 import System.Exit (exitFailure, exitSuccess)
 import System.IO (stdout, stderr, hPutStrLn, openFile, IOMode(ReadMode), hSetEncoding, utf8, hSetNewlineMode, universalNewlineMode, hGetContents)
-import System.Directory (getCurrentDirectory, doesFileExist, getAppUserDataDirectory)
-import System.FilePath (pathSeparator, (</>), (<.>))
+import System.Directory (doesFileExist, getAppUserDataDirectory)
+import System.FilePath ((</>), (<.>))
 import System.Process (readProcess)
 
 import Data.List (intersperse, stripPrefix)
-import Data.Data (Data, Typeable)
-import Data.Maybe (fromMaybe, maybeToList)
+import Data.Maybe (fromMaybe)
 import Data.Char (isSpace)
 
 import Text.RegexPR
 
-import Text.Pandoc.Scripting.Structure (Structure (Block, Section), fromStructure, toStructure, onStructure)
+import Text.Pandoc.Scripting.Structure (Structure (Block, Section),  onStructure)
 
 import Paths_pandoc_lit (getDataFileName)
-
--- helper
-
-stripSuffix suffix = fmap reverse . stripPrefix (reverse suffix) . reverse
 
 -- transformation
 
@@ -47,19 +42,19 @@ transformAbstract abstract (Section _ header contents)
   =   [Block $ RawBlock (Format "latex") "\\begin{abstract}"]
   ++  contents
   ++  [Block $ RawBlock (Format "latex") "\\end{abstract}"]
-transformAbstract abstract content
+transformAbstract _ content
   = [content]
 
 transformToc :: String -> Structure -> Structure
-transformToc toc (Section _ header contents)
+transformToc toc (Section _ header _)
   |   isText toc header
   =   Block $ RawBlock (Format "tex") "\\clearpage\\tableofcontents\\clearpage"
-transformToc toc content
+transformToc _ content
   =   content
 
 transformBeamer :: Config -> Structure -> [Structure]
 transformBeamer config (Section _ header contents)
-  |   Just tp <- titlePage config
+  |   Just tp <- configTitlePage config
   ,   isText tp header
   =   [Block $ RawBlock (Format "tex") "\\begin{frame}\n\\titlepage"]
   ++  transformFrameBlocks config 1 contents
@@ -96,12 +91,12 @@ transformBeamer _ content
 
 transformFrameBlocks :: Config -> Int -> [Structure] -> [Structure]
 transformFrameBlocks config i (Block HorizontalRule : rest)
-  | pause config
+  | configPause config
   =   [Block $ RawBlock (Format "tex") $ "\\pause"]
   ++  transformFrameBlocks config (succ i) rest
 
 transformFrameBlocks config i (Block (BlockQuote blocks) : rest)
-  | notes config
+  | configNotes config
   =   [Block $ RawBlock (Format "tex") $ "\\note<alert@@" ++ show i ++ ">{"]
   ++  map Block blocks
   ++  [Block $ RawBlock (Format "tex") $ "}"]
@@ -111,11 +106,11 @@ transformFrameBlocks config i (content : rest)
   =   [content]
   ++  transformFrameBlocks config i rest
 
-transformFrameBlocks config i []
+transformFrameBlocks _ _ []
   =   []
 
 transformBlock :: Config -> Block -> Block
-transformBlock config (CodeBlock (identifier, classes, attributes) code)
+transformBlock config (CodeBlock (_identifier, classes, _attributes) code)
   |   "literate" `elem` classes
   =   RawBlock (Format "latex") $ "\\begin{code}\n" ++ escapeCodeBlock config code ++ "\n\\end{code}"
   |   otherwise
@@ -124,28 +119,27 @@ transformBlock _ (RawBlock (Format "tex") text)
   =   RawBlock (Format "tex") (unescapeComments $ text)
 transformBlock _ (RawBlock (Format "latex") text)
   =   RawBlock (Format "latex") (unescapeComments $ text)
-transformBlock _ (RawBlock (Format format) text)
-  =   error $ "raw " ++ format ++ " not supported by pandoc-lit"
 transformBlock _ x
   =   x
 
+escapeCodeBlock :: Config -> String -> String
 escapeCodeBlock config
-  | th config = escapeInComments . escapeTH
+  | configTh config = escapeInComments . escapeTH
   | otherwise = escapeInComments
 
 transformInline :: Config -> Inline -> Inline
-transformInline config (Str text) = Str (escapeBar text)
-transformInline config (Code attr code)
-  |  hyperref config
-  =  RawInline (Format "tex") ("\\texorpdfstring{|" ++ escapeCodeInline config code ++ "|}{" ++ escapeCodePDF config code ++ "}")
+transformInline _config (Str text) = Str (escapeBar text)
+transformInline config (Code _attr code)
+  |  configHyperref config
+  =  RawInline (Format "tex") ("\\texorpdfstring{|" ++ escapeCodeInline config code ++ "|}{" ++ escapeCodePDF code ++ "}")
   |  otherwise
   =  RawInline (Format "tex") ("|" ++ escapeCodeInline config code ++ "|")
-transformInline config (Math t m) = Math t (escapeBar m)
-transformInline config (RawInline (Format "tex") text) = RawInline (Format "tex") $ unescapeComments $ text
-transformInline config (RawInline (Format "latex") text) = RawInline (Format "latex") $ unescapeComments $ text
-transformInline config (RawInline (Format format) text) = error $ "raw " ++ format ++ " not supported by pandoc-lit (" ++ text ++ ")"
-transformInline config (Link text (s1, s2)) = Link text (escapeBar s1, escapeBar s2)
-transformInline config x = x
+transformInline _config (Math t m) = Math t (escapeBar m)
+transformInline _config (RawInline (Format "tex") text) = RawInline (Format "tex") $ unescapeComments $ text
+transformInline _config (RawInline (Format "latex") text) = RawInline (Format "latex") $ unescapeComments $ text
+transformInline _config (RawInline (Format format) text) = error $ "raw " ++ format ++ " not supported by pandoc-lit (" ++ text ++ ")"
+transformInline _config (Link text (s1, s2)) = Link text (escapeBar s1, escapeBar s2)
+transformInline _config x = x
 
 transformFloats :: [Block] -> [Block]
 transformFloats = begin where
@@ -180,8 +174,9 @@ transformFloats = begin where
   caption env tag []
     =  error ("Missing \\caption for \\" ++ env ++ " " ++ tag)
 
-escapeCodePDF config
-  | otherwise = escapeBar . escapePDF
+escapeCodePDF :: String -> String
+escapeCodePDF
+   = escapeBar . escapePDF
 
 escapePDF :: String -> String
 escapePDF ('_' : rest) = '\\' : '_' : escapePDF rest
@@ -189,8 +184,9 @@ escapePDF ('$' : rest) = '\\' : '$' : escapePDF rest
 escapePDF (c : rest) = c : escapePDF rest
 escapePDF [] = []
 
+escapeCodeInline :: Config -> String -> String
 escapeCodeInline config
-  | th config = escapeBar . escapeTH
+  | configTh config = escapeBar . escapeTH
   | otherwise = escapeBar
 
 escapeInComments :: String -> String
@@ -261,22 +257,24 @@ escapeTH
 -- escape (x : rest) = x : escape rest
 -- escape [] = []
 
+isText :: String -> [Inline] -> Bool
 isText text inlines = inlines == (intersperse Space . map Str . words $ text)
 
 transformDoc :: Config -> Pandoc -> Pandoc
-transformDoc config
+transformDoc config@Config{configBeamer, configToc, configFigures, configAbstract}
   = onStructure
-    (  if beamer config then bottomUp (concatMap (transformBeamer config)) else id
-    .  maybe id (bottomUp . concatMap . transformAbstract)   (abstract config)
-    .  maybe id (bottomUp . transformToc)                    (toc config)
+    (  if configBeamer then bottomUp (concatMap (transformBeamer config)) else id
+    .  maybe id (bottomUp . concatMap . transformAbstract)   configAbstract
+    .  maybe id (bottomUp . transformToc)                    configToc
     )
   . bottomUp (transformBlock config)
   . bottomUp (transformInline config)
-  . if figures config then onBlocks transformFloats else id
+  . if configFigures then onBlocks transformFloats else id
 
 onBlocks :: ([Block] -> [Block]) -> Pandoc -> Pandoc
 onBlocks f (Pandoc meta blocks) = Pandoc meta (f blocks)
 
+parserState :: ReaderOptions
 parserState = def
   { readerExtensions = Ext_literate_haskell `Set.insert` readerExtensions def
   , readerParseRaw = True
@@ -285,7 +283,7 @@ parserState = def
   }
 
 readDoc :: Config -> String -> Pandoc
-readDoc config = handleError . readMarkdown parserState
+readDoc _ = handleError . readMarkdown parserState
 {-
   parserState { stateCitations = case references config of
                                    Just refs  ->  map refId refs
@@ -293,23 +291,24 @@ readDoc config = handleError . readMarkdown parserState
                                    -}
 
 writeDoc :: Config -> Pandoc -> String
-writeDoc config = writeLaTeX options where
-  options
+writeDoc Config{..} = writeLaTeX opts where
+  opts
     = def
-      { writerStandalone = maybe False (const True) (template config)
-      , writerTemplate = fromMaybe "" (template config)
-      , writerVariables = variables config
+      { writerStandalone = maybe False (const True) configTemplate
+      , writerTemplate = fromMaybe "" (configTemplate)
+      , writerVariables = configVariables
       , writerNumberSections = True
-      , writerCiteMethod = citeMethod config
+      , writerCiteMethod = configCiteMethod
       }
 
 -- escaping of TeX comments
 
 escapeComments :: String -> String
 escapeComments = unlines . skipFirst 3 . lines where
+  skipFirst :: Int -> [String] -> [String]
   skipFirst 0 text                =  outside text
   skipFirst n (x@('%' : _) : xs)  =  x : skipFirst (pred n) xs
-  skipFirst n text                =  outside text
+  skipFirst _ text                =  outside text
 
   outside []                =  []
   outside (x@('%' : _) : xs)  =  inside [x] xs
@@ -321,9 +320,8 @@ escapeComments = unlines . skipFirst 3 . lines where
                                          , [ignoreTag "end"]
                                          , outside xs ]
 
+ignoreTag :: String -> String
 ignoreTag c = "\\" ++ c ++ "{pandocShouldIgnoreTheseTeXComments}"
-ignoreBegin = ignoreTag "begin"
-ignoreEnd = ignoreTag "end"
 
 unescapeComments :: String -> String
 unescapeComments text
@@ -364,57 +362,58 @@ includeIncludes config = fmap unlines . mapM go . lines where
 -- option processing
 data Config
   =  Config
-     { includes          ::  [String]
-     , files             ::  [FilePath]
-     , abstract          ::  Maybe String
-     , toc               ::  Maybe String
-     , template          ::  Maybe String
-     , variables         ::  [(String, String)]
-     , preserveComments  ::  Bool
-     , standalone        ::  Bool
-     , beamer            ::  Bool
-     , processIncludes   ::  Bool
-     , eval              ::  Maybe String
-     , titlePage         ::  Maybe String
-     , notes             ::  Bool
-     , pause             ::  Bool
-     , th                ::  Bool
-     , figures           ::  Bool
-     , bibliography      ::  Maybe String
-     , references        ::  Maybe [Reference]
-     , csl               ::  Maybe String
-     , citeMethod        ::  CiteMethod
-     , includeInHeader   ::  [FilePath]
-     , includeBeforeBody ::  [FilePath]
-     , hyperref          ::  Bool
+     { configIncludes          ::  [String]
+     , configFiles             ::  [FilePath]
+     , configAbstract          ::  Maybe String
+     , configToc               ::  Maybe String
+     , configTemplate          ::  Maybe String
+     , configVariables         ::  [(String, String)]
+     , configPreserveComments  ::  Bool
+     , configStandalone        ::  Bool
+     , configBeamer            ::  Bool
+     , configProcessIncludes   ::  Bool
+     , configEval              ::  Maybe String
+     , configTitlePage         ::  Maybe String
+     , configNotes             ::  Bool
+     , configPause             ::  Bool
+     , configTh                ::  Bool
+     , configFigures           ::  Bool
+     , configBibliography      ::  Maybe String
+     , configReferences        ::  Maybe [Reference]
+     , configCsl               ::  Maybe String
+     , configCiteMethod        ::  CiteMethod
+     , configIncludeInHeader   ::  [FilePath]
+     , configIncludeBeforeBody ::  [FilePath]
+     , configHyperref          ::  Bool
      }
   deriving Show
 
+defaultConfig :: Config
 defaultConfig
   =  Config
-     { includes          =  []
-     , files             =  []
-     , abstract          =  Nothing
-     , toc               =  Nothing
-     , template          =  Nothing
-     , variables         =  []
-     , preserveComments  =  False
-     , standalone        =  False
-     , beamer            =  False
-     , processIncludes   =  False
-     , eval              =  Nothing
-     , titlePage         =  Nothing
-     , notes             =  False
-     , pause             =  False
-     , th                =  False
-     , figures           =  False
-     , bibliography      =  Nothing
-     , references        =  Nothing
-     , csl               =  Nothing
-     , citeMethod        =  Citeproc
-     , includeInHeader   =  []
-     , includeBeforeBody =  []
-     , hyperref          =  False
+     { configIncludes          =  []
+     , configFiles             =  []
+     , configAbstract          =  Nothing
+     , configToc               =  Nothing
+     , configTemplate          =  Nothing
+     , configVariables         =  []
+     , configPreserveComments  =  False
+     , configStandalone        =  False
+     , configBeamer            =  False
+     , configProcessIncludes   =  False
+     , configEval              =  Nothing
+     , configTitlePage         =  Nothing
+     , configNotes             =  False
+     , configPause             =  False
+     , configTh                =  False
+     , configFigures           =  False
+     , configBibliography      =  Nothing
+     , configReferences        =  Nothing
+     , configCsl               =  Nothing
+     , configCiteMethod        =  Citeproc
+     , configIncludeInHeader   =  []
+     , configIncludeBeforeBody =  []
+     , configHyperref          =  False
      }
 
 data Command
@@ -422,16 +421,15 @@ data Command
   |  Help
   deriving Show
 
+optInclude, optIncludeInHeader, optProcessIncludes, optHelp, optFile, optAbstract, optTitlePage, optToc, optComments, optNotes, optPause, optTH, optFigures  :: OptDescr (Command -> Command)
+
+
 optInclude     =  Option  ""   ["include"]     (ReqArg processInclude "FILE")
                           "emit a lhs2tex \"%include FILE\" directive"
 
 optIncludeInHeader
                =  Option  "H"  ["include-in-header"]     (ReqArg processIncludeInHeader "FILE")
                           "include the contents of FILE into the LaTeX header"
-
-optIncludeBeforeBody
-               =  Option  "B"  ["include-before-body"]     (ReqArg processIncludeBeforeBody "FILE")
-                          "include the contents of FILE at the beginning of the document body"
 
 optProcessIncludes
                = Option   ""   ["process-includes"] (NoArg processProcessIncludes)
@@ -476,9 +474,11 @@ optVariables   =  Option  ""   ["variable"]    (ReqArg processVariable "KEY:VALU
 optStandalone  =  Option  "s"  ["standalone"]  (NoArg processStandalone)
                           "produce standalone output"
 
+optTemplate, optVariables, optStandalone, optBeamer, optEval, optBibliography, optCSL, optNatbib, optBiblatex, optHyperref :: OptDescr (Command -> Command)
 
+processStandalone :: Command -> Command
 processStandalone (Transform config)
-  =  Transform (config {standalone = True})
+  =  Transform (config {configStandalone = True})
 processStandalone x
   =  x
 
@@ -502,128 +502,142 @@ optBiblatex    =  Option  ""   ["biblatex"]    (NoArg processBiblatex)
 
 optHyperref    = Option   ""   ["hyperref"] (NoArg processHyperref)
                           "better support hyperref package"
-
-processVariable arg (Transform (config@Config {variables = old}))
+processVariable :: String -> Command -> Command
+processVariable arg (Transform (config@Config {configVariables = old}))
   = case break (`elem` ":=") arg of
-      (k, _ : v)  ->  Transform (config {variables = old ++ [(k, v)]})
+      (k, _ : v)  ->  Transform (config {configVariables = old ++ [(k, v)]})
       _           ->  error ("Could not parse `" ++ arg ++ "' as a key/value pair (k=v or k:v)")
-processVariable arg x
+processVariable _ x
   = x
 
-processInclude file (Transform (config@Config {includes = old}))
-  =  Transform (config {includes = old ++ [file]})
-processInclude file x
+processInclude :: String -> Command -> Command
+processInclude file (Transform (config@Config {configIncludes = old}))
+  =  Transform (config {configIncludes = old ++ [file]})
+processInclude _ x
   =  x
 
-processFile file (Transform (config@Config {files = old}))
-  =  Transform (config {files = old ++ [file]})
-processFile file x
+processFile :: String -> Command -> Command
+processFile file (Transform (config@Config {configFiles = old}))
+  =  Transform (config {configFiles = old ++ [file]})
+processFile _ x
   =  x
 
+processComments :: Command -> Command
 processComments (Transform (config))
-  =  Transform (config {preserveComments = True})
+  =  Transform (config {configPreserveComments = True})
 processComments x
   =  x
 
-
+processNotes :: Command -> Command
 processNotes (Transform (config))
-  =  Transform (config {notes = True})
+  =  Transform (config {configNotes = True})
 processNotes x
   =  x
 
-processPause (Transform (config))
-  =  Transform (config {pause = True})
+processPause :: Command -> Command
+processPause (Transform config)
+  =  Transform (config {configPause = True})
 processPause x
   =  x
 
+processTH :: Command -> Command
 processTH (Transform (config))
-  =  Transform (config {th = True})
+  =  Transform (config {configTh = True})
 processTH x
   =  x
 
+processFigures :: Command -> Command
 processFigures (Transform (config))
-  =  Transform (config {figures = True})
+  =  Transform (config {configFigures = True})
 processFigures x
   =  x
 
+processEval :: String -> Command -> Command
 processEval dir (Transform config)
-  = Transform (config {eval = Just dir})
-processEval dir x
+  = Transform (config {configEval = Just dir})
+processEval _ x
   = x
 
+processAbstract :: Maybe String -> Command -> Command
 processAbstract (Just section) (Transform config)
-  =  Transform (config {abstract = Just section})
+  =  Transform (config {configAbstract = Just section})
 processAbstract Nothing (Transform config)
-  =  Transform (config {abstract = Just "Abstract"})
-processAbstract section x
+  =  Transform (config {configAbstract = Just "Abstract"})
+processAbstract _ x
   =  x
 
+processTitlePage :: Maybe String -> Command -> Command
 processTitlePage (Just section) (Transform config)
-  =  Transform (config {titlePage = Just section})
+  =  Transform (config {configTitlePage = Just section})
 processTitlePage Nothing (Transform config)
-  =  Transform (config {titlePage = Just "Title Page"})
-processTitlePage section x
+  =  Transform (config {configTitlePage = Just "Title Page"})
+processTitlePage _ x
   =  x
 
-
+processToc :: Maybe String -> Command -> Command
 processToc (Just section) (Transform config)
-  =  Transform (config {toc = Just section})
+  =  Transform (config {configToc = Just section})
 processToc Nothing (Transform config)
-  =  Transform (config {toc = Just "Contents"})
-processToc section x
+  =  Transform (config {configToc = Just "Contents"})
+processToc _ x
   =  x
 
+processTemplate :: String -> Command -> Command
 processTemplate file (Transform config)
-  =  Transform (config {template = Just file, standalone = True})
+  =  Transform (config {configTemplate = Just file, configStandalone = True})
 processTemplate _ x
   =  x
 
+processBeamer :: Command -> Command
 processBeamer (Transform config)
-  = Transform (config {beamer = True})
+  = Transform (config {configBeamer = True})
 processBeamer x
   = x
 
+processProcessIncludes :: Command -> Command
 processProcessIncludes (Transform config)
-  = Transform (config {processIncludes = True})
+  = Transform (config {configProcessIncludes = True})
 processProcessIncludes x
   = x
 
+processBibliography :: String -> Command -> Command
 processBibliography bib (Transform config)
-  = Transform (config {bibliography = Just bib})
-processBibliography bib x
+  = Transform (config {configBibliography = Just bib})
+processBibliography _ x
   = x
 
+processCSL :: String -> Command -> Command
 processCSL filename (Transform config)
-  = Transform (config {csl = Just filename,
-                       citeMethod = Citeproc})
-processCSL filename x
+  = Transform (config {configCsl = Just filename,
+                       configCiteMethod = Citeproc})
+processCSL _ x
   = x
 
+processNatbib :: Command -> Command
 processNatbib (Transform config)
-  = Transform (config {citeMethod = Natbib})
+  = Transform (config {configCiteMethod = Natbib})
 processNatbib x
   = x
 
+processBiblatex :: Command -> Command
 processBiblatex (Transform config)
-  = Transform (config {citeMethod = Biblatex})
+  = Transform (config {configCiteMethod = Biblatex})
 processBiblatex x
   = x
 
-processIncludeInHeader file (Transform (config@Config {includeInHeader = old}))
-  =  Transform (config {includeInHeader = old ++ [file]})
-processIncludeInHeader file x
+processIncludeInHeader :: String -> Command -> Command
+processIncludeInHeader file (Transform (config@Config {configIncludeInHeader = old}))
+  =  Transform (config {configIncludeInHeader = old ++ [file]})
+processIncludeInHeader _ x
   =  x
 
-processIncludeBeforeBody file (Transform (config@Config {includeBeforeBody = old}))
-  =  Transform (config {includeBeforeBody = old ++ [file]})
-processIncludeBeforeBody file x
-  =  x
-
+processHyperref :: Command -> Command
 processHyperref (Transform config)
-  = Transform (config {hyperref = True})
+  = Transform (config {configHyperref = True})
 processHyperref x
   = x
 
+options :: [OptDescr (Command -> Command)]
 options
   = [ optInclude
     , optHelp
@@ -652,6 +666,7 @@ options
 
 -- main program
 
+usageHeader :: String
 usageHeader = "Usage: pandoc-lit [OPTION...] files..."
 
 main :: IO ()
@@ -662,17 +677,19 @@ main = do
     (configT, [], [])
       -> case foldr (.) id configT (Transform defaultConfig) of
            Transform config  -> transform config
-           Help              -> help stdout >> exitSuccess
+           Help              -> help >> exitSuccess
     (_, _, errors)
       -> do mapM_ (hPutStrLn stderr) errors
-            usage stderr
+            usage
             exitFailure
 
-help h = hPutStrLn h (usageInfo usageHeader options)
+help :: IO ()
+help = hPutStrLn stdout (usageInfo usageHeader options)
 
-usage h = do
-  hPutStrLn h "Usage: pandoc-lit [options] [files]"
-  hPutStrLn h "pandoc-lit --help for more information."
+usage :: IO ()
+usage = do
+  hPutStrLn stderr "Usage: pandoc-lit [options] [files]"
+  hPutStrLn stderr "pandoc-lit --help for more information."
 
 readDefaultTemplate :: IO String
 readDefaultTemplate
@@ -686,35 +703,35 @@ readDataFile fname
   `catchIOError` (\_ -> getDataFileName fname >>= readFileUTF8)
 
 readTemplate :: Config -> IO (Maybe String)
-readTemplate config = do
-  case template config of
+readTemplate Config{..} = do
+  case configTemplate of
     Just filename
       -> return Just `ap` readFileOrGetContents filename
 
     Nothing
-      -> if standalone config
+      -> if configStandalone
            then return Just `ap` readDefaultTemplate
            else return Nothing
 
 transform :: Config -> IO ()
-transform (config@Config {files = []})
-  = transform (config {files = ["-"]})
+transform (config@Config {configFiles = []})
+  = transform (config {configFiles = ["-"]})
 
 transform config = do
   -- read template
   templateText <- readTemplate config
-  let config' = config {template = templateText}
+  let config' = config {configTemplate = templateText}
 
   -- output include directives
-  mapM_ (\x -> putStrLn ("%include " ++ x)) (includes config')
+  mapM_ (\x -> putStrLn ("%include " ++ x)) (configIncludes config')
 
   -- read bibliography
-  refs  <-  case bibliography config of
+  refs  <-  case configBibliography config of
               Just bib  ->  liftM Just (readBiblioFile bib)
               Nothing   ->  return Nothing
-  let config'' = config' {references = refs}
+  let config'' = config' {configReferences = refs}
 
-  mapM_ (transformFile config'') (files config'')
+  mapM_ (transformFile config'') (configFiles config'')
 
 -- A variant of readFile forcing UTF8 encoding and accepting any newline style.
 readFileUTF8 :: FilePath -> IO String
@@ -724,6 +741,7 @@ readFileUTF8 name = do
   hSetNewlineMode handle universalNewlineMode
   hGetContents handle
 
+readFileOrGetContents :: String -> IO String
 readFileOrGetContents "-" = getContents
 readFileOrGetContents file = readFileUTF8 file
 
@@ -731,28 +749,28 @@ transformFile :: Config -> FilePath -> IO ()
 transformFile config file = do
   text         <-  readFileOrGetContents file
   text'        <-  transformEval config file text
-  text''       <-  if processIncludes config
+  text''       <-  if configProcessIncludes config
                      then includeIncludes config text'
                      else return text'
-  let text'''  =   if preserveComments config
+  let text'''  =   if configPreserveComments config
                      then escapeComments text''
                      else text''
 
-  cslfile    <-  case csl config of
+  cslfile    <-  case configCsl config of
                    Just filename  ->  return filename
                    Nothing        ->  return "default.csl"
 
   let doc    =   readDoc config text'''
   let doc'   =   transformDoc config doc
   cslstyle <- readCSLFile Nothing cslfile
-  let doc''  = case references config of
-                   Just refs | citeMethod config == Citeproc
+  let doc''  = case configReferences config of
+                   Just refs | configCiteMethod config == Citeproc
                               ->  processCites cslstyle refs doc'
                    _          ->  doc'
 
-  headerIncludes <- mapM readFile (includeInHeader config)
-  includeBefore <- mapM readFile (includeBeforeBody config)
-  let config' = config {variables = variables config ++
+  headerIncludes <- mapM readFile (configIncludeInHeader config)
+  includeBefore <- mapM readFile (configIncludeBeforeBody config)
+  let config' = config {configVariables = configVariables config ++
                         map ((,) "header-includes") headerIncludes ++
                         map ((,) "include-before") includeBefore}
 
@@ -764,6 +782,7 @@ avoidUTF8 = concatMap f where
             then [c]
             else encodeCharForLatex c
 
+encodeCharForLatex :: Char -> String
 encodeCharForLatex c = case fromEnum c of
   -- LATIN EXTENDED
   0x00C0  ->  "\\`{A}"
@@ -843,7 +862,7 @@ encodeCharForLatex c = case fromEnum c of
   code    ->  "{\\char" ++ show code ++ "}"
 
 transformEval :: Config -> FilePath -> String -> IO String
-transformEval Config {eval = Just dir} path text = result where
+transformEval Config {configEval = Just dir} path text = result where
   result :: IO String
   result = process text (gmatchRegexPR "\\\\eval{([^\\}]*)}" text)
 
@@ -855,6 +874,7 @@ transformEval Config {eval = Just dir} path text = result where
     this <- execute arg
     that <- process post rest
     return (pre ++ "`" ++ this ++ "`" ++ that)
+  process _ _ = error "transformEval"
 
   execute arg = do
     readProcess "ghci" ["-v0", "-i" ++ dir, path] arg

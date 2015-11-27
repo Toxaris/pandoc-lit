@@ -61,7 +61,7 @@ data Structure
 toStructure :: [Block] -> [Structure]
 toStructure = fst . go 0
   where
-  go outer [] = ([], [])
+  go _ [] = ([], [])
 
   go outer rest@(Header inner _ _ : _) | inner <= outer
     =  ([], rest)
