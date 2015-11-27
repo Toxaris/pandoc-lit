@@ -1,15 +1,15 @@
 % Literate Programming with pandoc and lhs2tex
-% Tillmann Rendel
-% November 2010
+% Tillmann Rendel (Updated by Matthew Pickering)
+% November 2015
 
 pandoc-lit supports literate programming by combining two
-excellent tools: [pandoc] for text processing, and [lhs2tex]
+excellent tools: [pandoc] for text processing, and [lhs2TeX]
 for source code formatting. pandoc-lit's input files are written
 in markdown+lhs, and its output is LaTeX code ready to be
 processed by lhs2tex.
 
 [pandoc]: http://johnmacfarlane.net/pandoc/
-[lhs2tex]: http://people.cs.uu.nl/andres/lhs2tex/
+[lhs2TeX]: http://people.cs.uu.nl/andres/lhs2tex/
 
 I use pandoc-lit to write research papers and prepare
 presentation slides, and I plan to use it for my Ph.D. thesis. It
@@ -21,16 +21,65 @@ using it essentially requires some amount of hacking on it.
 Installation
 ============
 
-Download the [source distribution].
+Install the package from hackage. It provides an executable called `pandoc-lit`.
 
-    tar -xzf pandoc-lit-0.1.tar.gz
-    cd pandoc-lit-0.1
-    cabal install
-
-[source distribution]: http://www.informatik.uni-marburg.de/~rendel/pandoc-lit/pandoc-lit-0.1.tar.gz
+    cabal install pandoc-lit
 
 Documentation
 =============
+
+pandoc-lit works by traversing the [pandoc] AST and reformatting certain elements
+so that they are suitable to be processed by [lhs2TeX].
+
+## Transformations
+
+All special lhs2TeX characters are escaped automatically (for example `|`).
+
+### Inline Code
+
+Inline code fragments are directly translated to lhs2TeX inline code fragments.
+
+```
+This is some text with the variable `x` in the middle
+-->
+This is some text with the variable |x| in the middle
+```
+
+### Code Blocks
+
+Code blocks are translated to either the `code` or `spec` environment. If
+`literate` is amongst the code block's classes then it will be translated to a
+`code` environment, otherwise the `spec` environment.
+
+```
+\`\`\`
+foo = x
+\`\`\`
+-->
+\begin{spec}
+foo = x
+\end{spec}
+```
+
+```{literate}
+\`\`\`
+foo = x
+\`\`\`
+-->
+\begin{code}
+foo = x
+\end{code}
+```
+
+### Raw LaTeX
+
+Raw LaTeX commands are escaped and passed through.
+
+
+## Options
+
+There are also a large number of options which can be used to configure the final
+document.
 
 None available, but try `pandoc-lit --help` for an overview of
 command-line options, or watch this [lightning talk at the
