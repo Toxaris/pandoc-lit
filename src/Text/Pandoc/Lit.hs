@@ -109,10 +109,10 @@ transformFrameBlocks _ _ []
 
 transformBlock :: Config -> Block -> Block
 transformBlock config (CodeBlock (_identifier, classes, _attributes) code)
-  |   "literate" `elem` classes
-  =   RawBlock (Format "latex") $ "\\begin{code}\n" ++ escapeCodeBlock config code ++ "\n\\end{code}"
-  |   otherwise
+  |   "spec" `elem` classes
   =   RawBlock (Format "latex") $ "\\begin{spec}\n" ++ escapeCodeBlock config code ++ "\n\\end{spec}"
+  |   otherwise
+  =   RawBlock (Format "latex") $ "\\begin{code}\n" ++ escapeCodeBlock config code ++ "\n\\end{code}"
 transformBlock _ (RawBlock (Format "tex") text)
   =   RawBlock (Format "tex") (unescapeComments text)
 transformBlock _ (RawBlock (Format "latex") text)
