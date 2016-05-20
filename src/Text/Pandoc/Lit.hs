@@ -109,7 +109,9 @@ transformFrameBlocks _ _ []
 
 transformBlock :: Config -> Block -> Block
 transformBlock config (CodeBlock (_identifier, classes, _attributes) code)
-  |   "spec" `elem` classes
+  |   any (`elem` ["noescape"]) classes
+  =   RawBlock (Format "latex") $ "\\begin{spec}\n" ++ code ++ "\n\\end{spec}"
+  |   any (`elem` ["law","spec", "proof"]) classes
   =   RawBlock (Format "latex") $ "\\begin{spec}\n" ++ escapeCodeBlock config code ++ "\n\\end{spec}"
   |   otherwise
   =   RawBlock (Format "latex") $ "\\begin{code}\n" ++ escapeCodeBlock config code ++ "\n\\end{code}"
@@ -273,7 +275,7 @@ onBlocks f (Pandoc meta blocks) = Pandoc meta (f blocks)
 
 parserState :: ReaderOptions
 parserState = def
-  { readerExtensions = Ext_literate_haskell `Set.insert` readerExtensions def
+  { readerExtensions = readerExtensions def
   , readerParseRaw = True
   , readerSmart = True
   , readerApplyMacros = False
